@@ -22,18 +22,40 @@ import uuid
 from threading import Lock
 from typing import Optional
 
-import torch
-import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+# === 推理环境变量（必须在 import torch / indextts 之前设置） ===
+# OpenMP 重复加载兜底（macOS 上 torch + numpy 都带 libomp 时会冲突）
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "True")
+# HuggingFace 国内镜像（仅作 fallback；下面的 chdir 方案让多数情况下不需要联网）
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+# torch 扩展编译缓存
+_SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+os.environ.setdefault("TORCH_EXTENSIONS_DIR", os.path.join(_SERVER_DIR, "compile_cache"))
+os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "7.5;8.6;8.9+PTX")
 
-from indextts.infer_v2 import IndexTTS2
+# 重要陷阱处理：indextts/infer_v2.py 第 4 行 hard-code 写了
+#     os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+# 这是相对 cwd 的路径。如果 cwd 不是 indextts 仓库根，会指到一个不存在的目录，
+# 导致后续 hf_hub_download("amphion/MaskGCT", ...) 必去网络拉。
+# 解决：先 import indextts（只触发 __init__.py，不触发 infer_v2），找到 indextts 仓库根，
+# chdir 过去；然后 indextts.infer_v2 的 hardcode 会解析到正确的 checkpoints/hf_cache。
+import indextts  # noqa: E402 — 必须在 chdir 之前
+_INDEXTTS_FILE = indextts.__file__ or ""
+_INDEXTTS_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(_INDEXTTS_FILE)))
+os.chdir(_INDEXTTS_REPO_ROOT)
+
+import torch  # noqa: E402
+import uvicorn  # noqa: E402
+from fastapi import BackgroundTasks, FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+
+from indextts.infer_v2 import IndexTTS2  # noqa: E402
 
 MODEL_DIR: str = os.environ.get("INDEXTTS_MODEL_DIR", "./checkpoints")
 PORT: int = int(os.environ.get("INDEXTTS_PORT", "9800"))
 USE_FP16: bool = os.environ.get("INDEXTTS_USE_FP16", "1") not in ("0", "false", "False")
-UPLOAD_DIR: str = "uploads"
+# 临时文件目录用绝对路径，避免被 chdir 影响
+UPLOAD_DIR: str = os.path.join(_SERVER_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="IndexTTS2 Server", version="1.0.0")
@@ -137,7 +159,7 @@ def generate_speech(req: SpeechReq, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Invalid text input: only unsupported characters.")
 
     request_id = uuid.uuid4().hex
-    temp_out = f"temp_out_{request_id}.wav"
+    temp_out = os.path.join(UPLOAD_DIR, f"temp_out_{request_id}.wav")
 
     # 解析 voice 字符串前缀的情绪向量偷渡协议：[EMO:[v0,..,v7]|alpha]base64:...
     actual_voice = req.voice
