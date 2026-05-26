@@ -6,8 +6,8 @@ import os
 import json
 from typing import Any
 
-APP_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_DIR: str = os.path.join(APP_DIR, "config")
+_WEBAPP_DIR: str = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR: str = os.path.join(_WEBAPP_DIR, "config")
 CONFIG_FILE: str = os.path.join(CONFIG_DIR, "config.json")
 
 os.makedirs(CONFIG_DIR, exist_ok=True)

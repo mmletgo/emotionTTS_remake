@@ -8,7 +8,6 @@ __pycache__/
 .pytest_cache/
 
 # Runtime data (用户运行后才会产生的)
-core/config/config.json
 webapp/config/config.json
 outputs/*.wav
 outputs/*.mp3
