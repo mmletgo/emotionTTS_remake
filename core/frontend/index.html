@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>emotionTTS 配音工作站_v4.5</title>
+    <script>
+        const APP_VERSION = '4.5.0';
+        // 动态加载 CSS
+        document.write(`<link rel="stylesheet" href="/css/style.css?v=${APP_VERSION}">`);
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+
+<div id="configModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 780px; padding: 30px; max-height: 90vh; overflow-y: auto;">
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
+            <h2 style="margin: 0; color: #2c3e50; font-size: 22px;">⚙️ 系统引擎配置</h2>
+        </div>
+
+        <div id="customModePanel">
+            <div class="settings-row">
+                <div class="settings-label-col">
+                    <h3>🧠 语言大模型</h3>
+                    <p>配置用于情感分析与上下文逻辑匹配的底层大语言模型接口。</p>
+                </div>
+                <div class="settings-content-col">
+                    <div class="settings-group">
+                        <label>选择方案:</label>
+                        <select id="llmType" onchange="handleLlmTypeChange()">
+                            <option value="ollama" selected>本地 Ollama (默认)</option>
+                            <option value="siliconflow">硅基流动</option>
+                            <option value="youzhi">优云智算</option>
+                            <option value="deepseek">Deepseek 官方</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                        <a href="#" id="llmPromoLink" target="_blank" class="help-link" style="display: none;"></a>
+                    </div>
+                    <div class="settings-group">
+                        <label>API Base URL:</label>
+                        <input type="text" id="llmBaseUrl" placeholder="例如: http://127.0.0.1:11434/v1">
+                    </div>
+                    <div class="settings-group" id="llmApiKeyGroup">
+                        <label>API Key (密钥):</label>
+                        <input type="text" id="llmApiKey" placeholder="留空或输入你的 Key">
+                    </div>
+                    <div class="settings-group">
+                        <label>模型名称 (Model):</label>
+                        <input type="text" id="llmModel" placeholder="例如: qwen2.5:7b">
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-row">
+                <div class="settings-label-col">
+                    <h3>🗣️ 语音合成</h3>
+                    <p>配置 IndexTTS2 推理服务的位置：本地或自部署远端。</p>
+                </div>
+                <div class="settings-content-col">
+                    <div class="settings-group">
+                        <label>部署方式:</label>
+                        <select id="ttsType" onchange="handleTtsTypeChange()">
+                            <option value="local" selected>本地 (127.0.0.1:9800)</option>
+                            <option value="cloud">远端自部署</option>
+                        </select>
+                    </div>
+
+                    <div id="ttsCloudConfig" style="display: none;">
+                        <div class="settings-group" style="margin-bottom: 10px;">
+                            <label>远端 API Base:</label>
+                            <input type="text" id="ttsApiBase" placeholder="例如: https://your-tts.example.com/v1">
+                        </div>
+                        <div class="settings-group" style="margin-bottom: 10px;">
+                            <label>远端 API Key:</label>
+                            <input type="text" id="ttsApiKey" placeholder="留空或输入你的 Key">
+                        </div>
+                    </div>
+
+                    <div id="ttsLocalConfig" style="background: #fdf2f0; padding: 15px; border: 1px solid #fadbd8; border-radius: 8px;">
+                        <span class="badge badge-red" style="font-size: 13px; padding: 6px 12px; margin-bottom: 10px; background-color: #e74c3c;">💡 本地节点</span>
+                        <p style="font-size: 13px; color: #c0392b; margin: 0; line-height: 1.6;">
+                            请在你的 <b>indextts env</b> 中另开终端运行 <code>python indexTTS_Server/tts_server.py</code> 启动 9800 端口的推理服务。<br><br>
+                            点击下方保存按钮时，系统将自动测试与本地服务的连通性。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="verifyMsg" style="margin-top: 10px; font-size: 14px; font-weight: bold; text-align: left; min-height: 20px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 20px;">
+            <button class="btn-gray" style="flex: 1; padding: 14px;" onclick="closeModal()">取消并关闭</button>
+            <button class="btn-success" style="flex: 2; padding: 14px; font-size: 15px;" id="verifyBtn" onclick="verifyAndSaveKey()">💾 保存配置并进行双重网络探活</button>
+        </div>
+    </div>
+</div>
+
+<div id="charGridModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1000px; width: 95%; height: 85vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #2c3e50;">👥 选择配音演员</h3>
+            <button class="btn-gray" style="padding: 6px 15px;" onclick="closeCharGridModal()">关闭</button>
+        </div>
+        <input type="text" id="charSearchInput" placeholder="🔍 搜索角色名称..." style="margin-top: 0; margin-bottom: 15px; padding: 12px; border-color: #3498db; font-weight: bold;" onkeyup="filterCharacters()">
+        <div class="char-grid" id="charGridContainer" style="flex: 1; overflow-y: auto; padding-right: 5px;"></div>
+    </div>
+</div>
+
+<div id="editCharNameModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px; padding: 25px;">
+        <h3 style="margin-top: 0; color: #2c3e50;">✏️ 修改角色名称</h3>
+        <div class="settings-group">
+            <label>新角色名称：</label>
+            <input type="text" id="editCharNameInput" placeholder="请输入新的角色名称" style="padding: 10px; border-color: #3498db; width: 100%; box-sizing: border-box;">
+            <input type="hidden" id="editCharTargetId">
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 25px;">
+            <button class="btn-gray" style="flex: 1; padding: 10px;" onclick="closeEditCharNameModal()">取消</button>
+            <button class="btn-success" style="flex: 2; padding: 10px;" onclick="saveEditCharName()">💾 保存修改</button>
+        </div>
+    </div>
+</div>
+
+<div id="manualSplitModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="margin-top: 0; color: #2c3e50;">🔪 可视化精准切割</h3>
+        <audio id="splitAudio" controls style="width: 100%; margin: 15px 0; outline: none;"></audio>
+        <div style="text-align: center; margin-bottom: 20px; font-weight: bold; color: #e74c3c; font-size: 18px; background: #fdf2f0; padding: 10px; border-radius: 8px;">
+            下刀时间点：<span id="splitTimeDisplay">0.00</span> 秒
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn-gray" style="flex: 1;" onclick="closeManualSplitModal()">取消</button>
+            <button class="btn-danger" style="flex: 2;" id="confirmSplitBtn" onclick="confirmManualSplit()">✂️ 在此处一分为二</button>
+        </div>
+    </div>
+</div>
+
+<div id="selectLibraryModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1100px; width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #2c3e50;">🗂️ 手动指定情感参考音</h3>
+            <button class="btn-gray" style="padding: 6px 12px;" onclick="closeLibraryModal()">关闭</button>
+        </div>
+        <div style="background: #fdf2f0; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #fadbd8;">
+            <div style="font-size: 15px; color: #e74c3c; font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+                🎯 当前诊断的情绪画像：<span id="modalTargetEmotion">加载中...</span>
+            </div>
+            <input type="text" id="librarySearchInput" placeholder="🔍 在此搜索想找的文本台词..." style="margin-bottom: 12px; padding: 10px; font-size: 14px; border-color: #e74c3c;" onkeyup="filterLibrary()">
+
+            <div id="modalEmotionFilterBar" class="emotion-filter-bar" style="margin-bottom: 0; padding-bottom: 5px;"></div>
+        </div>
+        <div class="details-table-container" style="max-height: 500px; overflow-y: auto;">
+            <table>
+                <thead><tr>
+                            <th style="width: 40px;">ID</th>
+                            <th>原文内容</th>
+                            <th style="width: 280px;">三维情绪画像</th>
+                            <th style="width: 220px;">试听音频</th>
+                            <th style="width: 175px;">操作</th>
+                        </tr>
+                </thead>
+                <tbody id="libraryTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="manualEmotionModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="margin-top: 0; color: #2c3e50;">🎭 强制指定目标情绪</h3>
+        <div style="font-size: 13px; color: #7f8c8d; margin-bottom: 15px;">开启此功能后，AI将跳过剧本分析，直接根据你设定的情绪去库中匹配音频。</div>
+        <div class="emo-box" style="margin-bottom: 20px;">
+            <div class="emo-row">
+                <select id="manualEmoPrimary" class="emo-select">
+                    <option value="喜">喜</option><option value="怒">怒</option>
+                    <option value="哀">哀</option><option value="惧">惧</option>
+                    <option value="惊">惊</option><option value="厌">厌</option>
+                    <option value="平" selected>平</option>
+                </select>
+                <select id="manualEmoIntensity" class="emo-select emo-intensity">
+                    <option value="Low">Low</option>
+                    <option value="Medium" selected>Medium</option>
+                    <option value="High">High</option>
+                </select>
+            </div>
+            <input type="text" id="manualEmoComplex" class="emo-input" placeholder="复合情绪描述 (例如：嘲讽、傲娇)...">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn-gray" style="flex: 1;" onclick="clearManualEmotion()">取消强制指定</button>
+            <button class="btn-success" style="flex: 2;" onclick="saveManualEmotion()">✔️ 锁定情绪</button>
+        </div>
+    </div>
+</div>
+
+<div id="vectorEmotionModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 550px;">
+        <h3 style="margin-top: 0; color: #2c3e50;">🎛️ 精准情绪向量配置</h3>
+        <div style="font-size: 13px; color: #e74c3c; margin-bottom: 15px; font-weight: bold;">
+            ⚠️ 启用此模式后，将强制按照以下比例融合情绪，忽略原参考音频的语气！<br>
+            建议各项情绪值总和不要超过 0.8，否则可能出现声音失真。
+        </div>
+
+        <div class="vector-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
+            <div class="slider-group"><label>高兴: <span id="val_emo_0">0.00</span></label><input type="range" id="vec_emo_0" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_0').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>愤怒: <span id="val_emo_1">0.00</span></label><input type="range" id="vec_emo_1" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_1').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>悲伤: <span id="val_emo_2">0.00</span></label><input type="range" id="vec_emo_2" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_2').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>恐惧: <span id="val_emo_3">0.00</span></label><input type="range" id="vec_emo_3" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_3').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>反感: <span id="val_emo_4">0.00</span></label><input type="range" id="vec_emo_4" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_4').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>低落: <span id="val_emo_5">0.00</span></label><input type="range" id="vec_emo_5" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_5').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>惊讶: <span id="val_emo_6">0.00</span></label><input type="range" id="vec_emo_6" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_6').innerText=parseFloat(this.value).toFixed(2)"></div>
+            <div class="slider-group"><label>自然: <span id="val_emo_7">0.00</span></label><input type="range" id="vec_emo_7" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('val_emo_7').innerText=parseFloat(this.value).toFixed(2)"></div>
+        </div>
+
+        <div style="margin-bottom: 20px; background: #fdf2f0; padding: 15px; border-radius: 8px; border: 1px solid #fadbd8;">
+            <div class="slider-group" style="margin: 0;">
+                <label style="color: #c0392b; font-weight: bold;">全局情感强度 (Alpha权重): <span id="val_emo_alpha">0.65</span></label>
+                <input type="range" id="vec_emo_alpha" min="0.1" max="1.0" step="0.05" value="0.65" oninput="document.getElementById('val_emo_alpha').innerText=parseFloat(this.value).toFixed(2)">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+            <button class="btn-gray" style="flex: 1; padding: 12px;" onclick="closeVectorEmotionModal()">取消</button>
+            <button id="btnApplyVectorToAll" class="btn-info" style="flex: 1.5; display: none; padding: 12px; background-color: #8e44ad; border-color: #8e44ad;" onclick="applyVectorToAll()">📢 应用到所有</button>
+            <button class="btn-danger" style="flex: 1.5; padding: 12px;" onclick="saveVectorEmotion()">✔️ 确定使用</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="header-wrap">
+        <h1>🎙️ EmotionTTS 配音工作站</h1>
+        <div style="display: flex; align-items: center; gap: 15px;">
+
+            <div class="mini-config">
+                <span class="status-label">状态:</span>
+                <span id="keyStatusBadge" class="badge badge-gray">读取中...</span>
+                <button class="btn-outline" style="padding: 4px 12px; margin: 0; border-radius: 12px; font-size: 12px;" onclick="openModal()">设置</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('synthTab', event)">🎬 单句配音</div>
+        <div class="tab" onclick="switchTab('longTextTab', event)">📑 长文本配音</div>
+        <div class="tab" onclick="switchTab('configTab', event)">🛠️ 角色库</div>
+    </div>
+
+    <div id="synthTab" class="tab-content active">
+        <label style="font-weight: bold; color: #2c3e50;">🎭 当前领衔主演：</label>
+
+        <div class="selected-char-card">
+            <div class="char-info-block" id="selectedCharDisplay">
+                <div class="default-avatar">?</div>
+                <div class="char-name-audio">
+                    <span class="name">请先选择或创建一个角色</span>
+                </div>
+            </div>
+            <button class="btn-primary" style="padding: 8px 18px; border-radius: 50px;" onclick="openCharGridModal('single')">🔄 切换选角</button>
+        </div>
+        <input type="hidden" id="charSelect" value="">
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; margin-bottom: 5px;">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+                <label style="font-weight: bold; color: #2c3e50; margin: 0;">📜 输入剧本台词：</label>
+            </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button id="vectorEmoBtn" class="btn-outline-primary btn-sm" onclick="openVectorEmotionModal('single')" style="margin: 0; padding: 6px 16px;">
+                         🎛️ 设置情绪向量
+                    </button>
+                    <button id="clearVectorEmoBtn" class="btn-outline-danger btn-sm" onclick="clearVectorSettings('single')" style="display: none; margin: 0; padding: 6px 12px; font-weight: bold;" title="一键取消情绪向量">
+                        ✖ 取消
+                    </button>
+                </div>
+        </div>
+
+        <div style="position: relative; margin-bottom: 10px;">
+            <textarea id="inputText" placeholder="输入要合成的文案... (最多 300 字)" maxlength="300"
+                      oninput="document.getElementById('singleCharCount').innerText = this.value.length"
+                      style="margin-bottom: 0; padding-bottom: 24px; height: 180px;"></textarea>
+            <div style="position: absolute; right: 12px; bottom: 8px; font-size: 12px; color: #95a5a6; pointer-events: none; user-select: none;">
+                <span id="singleCharCount">0</span> / 300 字
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 15px; margin-top: 15px;">
+            <button class="btn-outline-primary" onclick="openLibraryModal('single')" style="flex: 1; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold;">🗂️ 手动选参考音频</button>
+            <button class="btn-primary" id="oneClickBtn" onclick="oneClickSynthesize()" style="flex: 1; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold;">🚀 AI 智能合成</button>
+        </div>
+
+        <div id="outputWrapper" style="display:none; margin-top: 30px;">
+            <div class="box" id="candidatesArea" style="margin-top: 0; padding: 20px; border-color: #3498db; background-color: #f0f7ff;">
+                <div style="font-size: 15px; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid #d6eaf8; display: flex; align-items: center; gap: 8px;">
+                    <span style="background: #3498db; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">AI 诊断</span>
+                    <strong style="color: #2c3e50;">当前情绪画像：</strong>
+                    <span id="targetEmotion" style="color: #e67e22; font-weight: bold;"></span>
+                </div>
+
+                <div id="singleCandidateView">
+                </div>
+            </div>
+
+            <div class="box" id="resultArea" style="display: none; border-color: #2ecc71; background-color: #f2fbf5; margin-top: 15px;">
+                <div style="font-size: 15px; font-weight: bold; color: #27ae60; margin-bottom: 10px;">📢 最终合成结果：</div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <audio id="audioPlayer" controls style="flex: 1; height: 40px;"></audio>
+                    <a id="downloadLink" href="#" download="synthesized_audio.wav" style="text-decoration:none;">
+                        <button class="btn-success" style="margin: 0; padding: 0 25px; height: 40px;">💾 下载音频</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="longTextTab" class="tab-content">
+        <label style="font-weight: bold; color: #2c3e50;">🎭 全局默认发音人：</label>
+
+        <div class="selected-char-card" style="border-color: #9b59b6;">
+            <div class="char-info-block" id="longGlobalCharDisplay">
+                <div class="default-avatar">?</div>
+                <div class="char-name-audio">
+                    <span class="name">请先选择角色</span>
+                </div>
+            </div>
+            <button class="btn-info" style="padding: 8px 18px; border-radius: 50px;" onclick="openCharGridModal('long_global')">🔄 切换全局角色</button>
+        </div>
+        <input type="hidden" id="longCharSelect" value="">
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; margin-bottom: 5px;">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+                <label style="font-weight: bold; color: #2c3e50; margin: 0;">📜 输入长文本：</label>
+                <a href="#" id="helpLinkLong" target="_blank" class="help-link" style="font-size: 14px; font-weight: bold;">📘 如何长文本配音？</a>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; background: #fff; padding: 3px 10px; border-radius: 6px; border: 1px solid #dcdde1;">
+                    <span style="font-size: 13px; font-weight:bold; color: #2c3e50;">单句最短字数：</span>
+                    <input type="number" id="longMinLen" value="10" min="1" max="700" style="width: 50px; margin:0; padding:4px; text-align:center; border: 1px solid #bdc3c7; border-radius: 4px;">
+                </div>
+                <input type="file" id="importTxtFiles" accept=".txt" multiple style="display: none;" onchange="handleImportTxt(event)">
+                <button class="btn-outline-primary btn-sm" onclick="document.getElementById('importTxtFiles').click()" style="margin: 0; border-radius: 6px;">📄 批量导入 TXT</button>
+
+                <input type="file" id="importSrtFile" accept=".srt" style="display: none;" onchange="handleImportSrt(event)">
+                <button class="btn-outline-primary btn-sm" onclick="document.getElementById('importSrtFile').click()" style="margin: 0; border-radius: 6px; color: #8e44ad; border-color: #8e44ad;">🎬 导入 SRT 字幕</button>
+            </div>
+        </div>
+        <textarea id="longInputText" placeholder="将大段台词粘贴到这里，点击下方按钮将自动按照标点符号智能拆分段落..." style="height: 180px;"></textarea>
+
+        <button class="btn-primary full-width" onclick="splitLongText()" style="font-size: 18px; background-color: #34495e;">✂️ 智能拆分段落</button>
+
+        <div id="longBatchBar" style="display: none; justify-content: space-between; align-items: center; margin-top: 20px; padding: 12px 15px; background: #fff; border-radius: 8px; border: 1px solid #dcdde1; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+
+    <div style="display: flex; align-items: center; gap: 20px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold; color: #2c3e50; font-size: 14px; margin: 0;">
+            <input type="checkbox" id="longSelectAll" onchange="toggleSelectAllLongSegs()" style="width: 16px; height: 16px; cursor: pointer; margin: 0; accent-color: #3498db;">
+            片段全选
+        </label>
+
+        <select id="longSegFilter" onchange="renderLongTextSegments()" style="margin: 0; padding: 4px 10px; font-size: 13px; border-radius: 6px; border: 1px solid #bdc3c7; color: #2c3e50; width: auto; background-color: #f8f9fa; cursor: pointer; outline: none; font-weight: bold;">
+            <option value="all">👁️ 显示全部片段</option>
+            <option value="no_ref">⚠️ 仅显示：未选参考音</option>
+            <option value="no_audio">⭕ 仅显示：未合成音频</option>
+            <option value="no_audition">🔴 仅显示：合成后未试听</option>
+        </select>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 5px; background: #fffcf5; padding: 4px 10px; border-radius: 6px; border: 1px solid #f1c40f; flex-shrink: 0;">
+            <span style="font-size: 13px; font-weight:bold; color: #d35400; white-space: nowrap;">情绪起伏:</span>
+            <select id="longGlobalAlphaWeight" style="margin:0; padding:2px 4px; font-size: 12px; width: 65px; text-align:center; border: 1px solid #f39c12; border-radius: 4px; font-weight: bold; color: #e67e22; background: #fff; cursor: pointer; outline: none; flex-shrink: 0;" title="设置AI智能匹配时的情绪张力强度">
+                <option value="0.2">很低</option>
+                <option value="0.4">低</option>
+                <option value="0.6" selected>中</option>
+                <option value="0.8">高</option>
+                <option value="1.0">很高</option>
+            </select>
+        </div>
+
+        <button id="btnBatchMatch" class="btn-info btn-sm" disabled onclick="batchMatchSelected()" style="margin: 0;">🤖 智能选参考音频 (0)</button>
+        <button id="btnBatchSynth" class="btn-success btn-sm" disabled onclick="batchSynthSelected()" style="margin: 0;">🚀 全部合成 (0)</button>
+        <button id="btnBatchStop" class="btn-danger btn-sm" style="display: none; margin: 0;" onclick="stopBatchSynth()">🛑 停止合成</button>
+        <button id="btnBatchPlay" class="btn-primary btn-sm" disabled onclick="toggleBatchPlay()" style="margin: 0; background-color: #8e44ad; border-color: #8e44ad;">▶️ 从头播放 (0)</button>
+
+        <div style="position: relative; display: inline-block;">
+            <button id="btnBatchDownload" class="btn-primary btn-sm" disabled onclick="toggleExportMenu(event)" style="margin: 0; background-color: #f39c12; border-color: #e67e22; padding-right: 15px;">💾 下载音频 (0) ▾</button>
+            <div id="exportDropdown" style="display: none; position: absolute; bottom: 100%; right: 0; margin-bottom: 8px; background: white; border: 1px solid #bdc3c7; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.15); padding: 6px; flex-direction: column; min-width: 150px; z-index: 100;">
+                <button class="dropdown-menu-item merge" onclick="mergeExportSelected()">🔗合并导出</button>
+                <button class="dropdown-menu-item zip" onclick="batchExportZipSelected()">📦批量导出为ZIP</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <div id="longSegmentsContainer" style="margin-top: 15px; display: flex; flex-direction: column; gap: 15px;"></div>
+    </div>
+
+    <div id="configTab" class="tab-content">
+        <div id="charListSection">
+            <div class="library-top-bar">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="text" id="mainCharSearch" placeholder="🔍 搜索库中角色..." onkeyup="filterMainCharList()" style="margin: 0; width: 280px; border-color: #bdc3c7;">
+                    <a href="#" id="helpLinkChar" target="_blank" class="help-link" style="font-size: 14px; font-weight: bold;">📘 如何新建角色？</a>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="file" id="importCharZip" accept=".zip" style="display: none;" onchange="handleImportCharZip(event)">
+
+                    <a href="#" id="helpLinkOnlineLibrary" target="_blank" class="help-link" style="font-size: 14px; font-weight: bold; color: #9b59b6;">🌐 线上角色库（下载后导入）</a>
+
+                    <button class="btn-outline-primary" id="importCharBtn" onclick="document.getElementById('importCharZip').click()" style="margin: 0;">📥 导入角色包(ZIP)</button>
+
+                    <button class="btn-primary" onclick="showAddForm()" style="margin: 0;">➕ 新建角色</button>
+                </div>
+            </div>
+            <div id="charListContainer" class="library-grid"></div>
+        </div>
+
+        <div id="addCharSection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <button class="btn-gray" onclick="showList()" style="margin: 0;">⬅️ 返回角色库</button>
+                <div style="display: flex; align-items: center; gap: 12px; background: #fff; padding: 8px 15px; border-radius: 8px; border: 1px solid #dcdde1; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                    <div style="display: flex; flex-direction: column; text-align: right;">
+                        <span style="font-weight: bold; color: #2c3e50; font-size: 14px;">✂️ 句子切割灵敏度</span>
+                    </div>
+                    <input type="number" id="charSilenceLen" value="0.8" min="0.1" max="2.0" step="0.1" style="width: 70px; margin: 0; padding: 6px; font-weight: bold; color: #3498db; font-size: 15px; text-align: center; border: 1px solid #bdc3c7; border-radius: 6px;">
+                </div>
+            </div>
+
+            <div class="box" style="margin-top: 0;">
+                <label>角色名称：</label>
+                <input type="text" id="charName" placeholder="请起个名字">
+                <label>角色头像 (可选)：</label>
+                <input type="file" id="charAvatar" accept="image/png, image/jpeg, image/webp">
+                <label>上传原始音频 <span style="color:#e74c3c;">(支持多选)</span>：</label>
+                <input type="file" id="charAudio" accept="audio/*" multiple>
+
+                <button class="btn-success full-width" id="buildBtn" onclick="buildCharacter()">⚙️ 开始全自动切片与清洗</button>
+                <div class="progress-wrapper" id="progressWrapper"><div class="progress-bar" id="progressBar"></div></div>
+                <div class="status-text" id="buildStatus"></div>
+            </div>
+        </div>
+
+        <div id="charDetailsSection" style="display: none;">
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; background: #fdfefe; padding: 8px 20px; border-radius: 50px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                    <div id="detailsCharAvatar"></div>
+                    <div style="display: flex; flex-direction: column; text-align: left;">
+                        <span id="detailsCharName" style="font-weight: bold; color: #2c3e50; font-size: 16px;">读取中...</span>
+                        <span id="detailsCharCount" style="font-size: 12px; color: #7f8c8d;"></span>
+                    </div>
+                </div>
+
+                <button class="btn-gray" onclick="showList()" style="margin: 0; padding: 8px 15px;">⬅️ 返回</button>
+            </div>
+
+            <div id="emotionFilterBar" class="emotion-filter-bar"></div>
+
+            <div class="box details-action-bar" style="margin-top: 0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: #fdfefe; padding: 15px; flex-wrap: wrap;">
+
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-primary" style="background-color: #f39c12; border-color: #e67e22; padding: 10px 20px;" id="mergeSelectedBtn" onclick="mergeSelectedItems()">🔗 合并</button>
+                    <button class="btn-success" id="saveAllBtn" onclick="saveAllChanges()" style="min-width: 140px; padding: 10px 20px;">💾 保存更改</button>
+                </div>
+
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-outline-danger" onclick="clearAllEmotions()" style="padding: 10px 15px; border-color: #e74c3c; color: #e74c3c;">🗑️ 清空情绪标记</button>
+                    <button class="btn-info" id="batchAnalyzeBtn" onclick="batchAnalyzeEmotions()" style="padding: 10px 15px;">🤖 一键 AI 情绪分析</button>
+                    <button class="btn-primary" onclick="toggleManualAddForm()" style="padding: 10px 15px;">➕ 手动补充</button>
+                    <span id="batchAnalyzeStatus" style="font-size: 13px; font-weight: bold; margin-left: 10px; color: #e67e22;"></span>
+                </div>
+            </div>
+            <div id="manualAddForm" class="box" style="display: none; margin-top: 0; margin-bottom: 20px; background: #fffcf5; border-color: #f1c40f;">
+                <h4 style="margin-top: 0; color: #d35400;">📥 补充长音频并自动切片入库</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <label style="margin: 0; font-weight: bold; color: #2c3e50;">上传新音频（支持多选）：</label>
+                    <div style="display: flex; align-items: center; gap: 12px; background: #fff; padding: 8px 15px; border-radius: 8px; border: 1px solid #dcdde1;">
+                        <input type="number" id="appendSilenceLen" value="0.8" min="0.1" max="2.0" step="0.1" style="width: 70px; margin: 0; padding: 6px; font-weight: bold; color: #3498db; text-align: center; border: 1px solid #bdc3c7; border-radius: 6px;">
+                    </div>
+                </div>
+                <input type="file" id="appendAudioFile" accept="audio/*" multiple>
+                <button class="btn-success full-width" id="appendBtn" onclick="submitAppendItem()">🚀 开始自动切片并追加到末尾</button>
+                <div class="progress-wrapper" id="appendProgressWrapper"><div class="progress-bar" id="appendProgressBar"></div></div>
+                <div class="status-text" id="appendStatus"></div>
+            </div>
+
+            <div class="details-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll()"></th>
+                            <th>原文内容</th>
+                            <th style="width: 280px;">三维情绪画像面板</th>
+                            <th style="width: 220px;">试听音频</th>
+                            <th style="width: 120px;">操作</th>
+                            <th style="width: 75px; text-align: center; color: #2c3e50; user-select: none;">
+                                喜爱
+                                <div style="position: relative; display: inline-block; vertical-align: middle;"
+                                     onmouseover="this.querySelector('.tip-box').style.opacity='1'; this.querySelector('.tip-box').style.visibility='visible'; this.querySelector('.icon-q').style.color='#3498db'; this.querySelector('.icon-q').style.borderColor='#3498db';"
+                                     onmouseout="this.querySelector('.tip-box').style.opacity='0'; this.querySelector('.tip-box').style.visibility='hidden'; this.querySelector('.icon-q').style.color='#95a5a6'; this.querySelector('.icon-q').style.borderColor='#95a5a6';">
+                                    <span class="icon-q" style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid #95a5a6; color: #95a5a6; font-size: 10px; cursor: help; margin-left: 4px; font-weight: normal; transition: 0.2s;">?</span>
+
+                                    <div class="tip-box" style="position: absolute; top: 50%; right: calc(100% + 10px); transform: translateY(-50%); background: rgba(44, 62, 80, 0.95); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 16px; font-weight: normal; white-space: nowrap; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.15); pointer-events: none;">
+                                        智能匹配时，会优先从【喜爱】的素材中进行挑选
+                                        <div style="position: absolute; top: 50%; left: 100%; transform: translateY(-50%); border-width: 5px; border-style: solid; border-color: transparent transparent transparent rgba(44, 62, 80, 0.95);"></div>
+                                    </div>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const jsFiles = [
+        '/js/help_links.js',
+        '/js/core.js',
+        '/js/library.js',
+        '/js/utils.js',
+        '/js/api.js',
+        '/js/audio_player.js',
+        '/js/modals.js',
+        '/js/synth.js'
+    ];
+
+    jsFiles.forEach(file => {
+        document.write(`<script src="${file}?v=${APP_VERSION}"><\/script>`);
+    });
+</script>
+
+</body>
+</html>

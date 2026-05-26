@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Runtime data (用户运行后才会产生的)
+core/config/config.json
+webapp/config/config.json
+outputs/*.wav
+outputs/*.mp3
+outputs/*.zip
+
+# 角色素材库较大、且因人而异：默认忽略，按需 git add
+characters/*/voice_lib/
+characters/*/*.png
+characters/*/*.jpg
+characters/*/*.jpeg
+characters/*/*.webp
+
+# 大模型权重
+models/whisper-small/*.bin
+models/whisper-small/*.safetensors
+
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp

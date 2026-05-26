@@ -1,0 +1,64 @@
+"""
+API 数据模型定义 (Schemas)
+存放所有请求体和响应体的 Pydantic 模型，用于接口入参校验。
+"""
+
+from pydantic import BaseModel
+from typing import Dict, Any, Optional, List
+
+# ==========================================
+# 1. 配置相关模型 (Config)
+# ==========================================
+class ConfigRequest(BaseModel):
+    llm_active_type: str
+    llm_configs: dict
+    tts: dict
+
+# ==========================================
+# 2. 角色素材相关模型 (Character Items)
+# ==========================================
+class UpdateItemsRequest(BaseModel):
+    updates: Dict[str, Any]
+
+class MergeItemsRequest(BaseModel):
+    item_ids: List[int]
+
+class ManualSplitRequest(BaseModel):
+    split_time: float
+
+# ==========================================
+# 3. 核心业务处理模型 (LLM & TTS & Text)
+# ==========================================
+class AnalyzeEmotionRequest(BaseModel):
+    text: str
+
+class MatchRequest(BaseModel):
+    char_id: str
+    text: str
+    manual_emotion: Optional[Dict[str, str]] = None
+
+class SplitTextRequest(BaseModel):
+    text: str
+    min_len: int = 10
+    max_len: int = 150
+
+class SynthAudioRequest(BaseModel):
+    text: str
+    char_id: str = ""
+    ref_audio_filename: str = ""
+    emo_vector: Optional[List[float]] = None
+    emo_alpha: float = 1.0
+
+class MergeOutputsRequest(BaseModel):
+    audio_urls: List[str]
+
+
+# ==========================================
+# 4. OpenAI 兼容外部调用模型
+# ==========================================
+class OpenAITTSRequest(BaseModel):
+    model: str = "emotionTTS"
+    input: str
+    voice: str  # 外部调用时，这里传入你的“角色名”，比如“胡桃”
+    response_format: str = "wav"
+    speed: float = 1.0
