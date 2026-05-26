@@ -41,6 +41,31 @@ gpu_lock: Lock = Lock()
 tts: Optional[IndexTTS2] = None
 
 
+def _clear_stale_uploads() -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        每次合成会向 uploads/ 写 ref_<uuid>.wav 和 temp_out_<uuid>.wav，正常路径通过
+        BackgroundTask 清理；但若进程上次崩溃或被强杀，BackgroundTask 不会被执行，
+        残留文件会持续累积占用磁盘。启动时一次性清空。
+
+    Code Logic（这个函数做什么）:
+        遍历 UPLOAD_DIR 下的文件，逐个 os.remove；目录本身保留；异常吞掉。
+    """
+    if not os.path.isdir(UPLOAD_DIR):
+        return
+    removed = 0
+    for name in os.listdir(UPLOAD_DIR):
+        path = os.path.join(UPLOAD_DIR, name)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                removed += 1
+            except Exception:
+                pass
+    if removed:
+        print(f"[tts_server] cleared {removed} stale file(s) in {UPLOAD_DIR}/", flush=True)
+
+
 def _init_engine() -> None:
     """
     Business Logic（为什么需要这个函数）:
@@ -168,6 +193,7 @@ def generate_speech(req: SpeechReq, background_tasks: BackgroundTasks):
 
 
 if __name__ == "__main__":
+    _clear_stale_uploads()
     _init_engine()
     print(f"🚀 IndexTTS2 server listening on http://0.0.0.0:{PORT}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

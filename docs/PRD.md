@@ -893,10 +893,23 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 - 无身份验证机制；默认设计为单机或受信内网使用
 - 删除操作不可恢复，前端必须二次确认；后端不做软删除
 
-### 5.5 平台
-| 平台 | 启动方式 |
+### 5.5 平台与部署边界
+| 项 | 说明 |
 | --- | --- |
-| macOS / Linux / Windows | `python main.py` 启动 Web 中枢；本地 TTS 需在自己的 indextts env 里另开终端 `python tts_service/server.py` |
+| 启动方式 | macOS / Linux / Windows 都用 `python main.py`；本地 TTS 需另在 indextts env 里 `python tts_service/server.py` |
+| 用户假设 | **单机单用户**工具；不在产品范围内的能力：多用户隔离、作品空间、身份认证。需要这些能力请基于 webapp/api 层加反代/网关，本仓库不内置 |
+| 启动清理 | `tts_service/server.py` 启动时执行 `_clear_stale_uploads()` 清掉上次崩溃残留；Web 中枢启动时不做清理（outputs/ 由用户管理） |
+
+### 5.6 有意为之的设计决策（防止误读）
+
+以下行为是**经过权衡后保留的现状**，不是缺陷：
+
+| 行为 | 决策 | 取舍 |
+| --- | --- | --- |
+| `outputs/` 永不自动清理 | 不实现自动清理 | 单机工具用户更怕"刚生成的稀有合成被吃掉"；用户自己 rm 成本极低 |
+| `task_progress` 重启即丢 | 不持久化到 json | BackgroundTasks 也不能跨进程恢复任务，光持久化进度没有意义；重启前轮询若 404 由前端兜底 |
+| `is_api_safe` 在合并/切分新 item 上始终为 false | 不继承原 item 状态 | "API 可暴露"是更严格的产品决策，应由人主动 promote；自动继承容易把含敏感词的新片段误开白名单 |
+| IndexTTS2 全局串行（`gpu_lock`） | 不引入并行 / 队列上限 | GPU 资源决定，并行只会让显存爆掉；FastAPI 的请求队列已经隐含 FIFO 排队语义 |
 
 ---
 
@@ -904,7 +917,7 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 
 ### 6.1 业务规则
 
-1. **`char_id` 唯一性**：新建/导入角色生成 `char_id = "char_" + hex(8)`，落盘到目录名；旧版数据中目录名与 `library.json` 内 `char_id` 可能不一致，所有寻址以目录名为准（实现位置：`domain.characters.find_character_by_name_or_id`）。
+1. **`char_id` 唯一性**：新建/导入角色生成 `char_id = "char_" + hex(8)`，落盘到目录名。新代码保证目录名 == `library.json.char_id`（导入时会自动刷新内部字段）。所有寻址仍以目录名为准（实现位置：`domain.characters.find_character_by_name_or_id`），以兼容历史包内的不一致。
 2. **items 主键稳定性**：`item.id` 在删除/合并/切分后可能形成空洞；前端必须按 id 寻址，不可按数组索引。
 3. **白名单优先级**：选择候选池时若存在 ≥1 个 `is_api_safe=true`，则只用这批；否则用全量已打标素材（实现：`domain.matcher._select_candidate_pool`）。
 4. **打标可用性**：素材若 `emotion` 为空白对象（即未打标），在匹配候选池里被排除；只要 `emotion` 是非空 dict 即视为有效。
@@ -930,15 +943,14 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 
 ## 7. 待澄清/已知缺口（Open Questions）
 
-> 写 PRD 时发现的、源代码未给出明确语义、需要产品决策的问题。
-
-1. **角色目录名 vs `library.json.char_id` 不一致**：现网真实数据中存在目录 `char_0484abf3` 内 `library.json` 写着 `char_66ff5e94`。当前后端用目录名寻址，导出/导入时按目录名保留——是否在导入时统一刷新内部 `char_id` 字段？
-2. **`outputs/` 自动清理策略**：是否引入按容量/时间的自动清理？目前完全靠用户手动。
-3. **后台任务进度持久化**：进程重启后 `api._progress.task_progress` 丢失，正在进行的素材构建若用户刷新页面会一无所知；是否要落盘到 json？
-4. **`is_api_safe` 默认值**：合并/切分产生的新 item 默认是 false，是否要支持"继承原 item 的白名单状态"？
-5. **多用户隔离**：当前是单机单用户假设，若部署到内网多人使用，需补充身份与作品空间隔离层。
-6. **本地 IndexTTS2 并发**：业务上是否允许排队？现在 `gpu_lock` 串行会让多个慢请求互相阻塞。
-7. **uploads/ 残留**：`tts_service/server.py` 在合成时往 `uploads/ref_*.wav` 写参考音，BackgroundTask 注册清理；若进程异常崩溃时未触发 BackgroundTask 会留下残留文件。
+> 当前无未决问题。原 7 条 Open Questions 已全部处理：
+> - #1 char_id 一致性 → 已实现（导入时自动刷新 library.json.char_id，见 6.1 第 1 条）
+> - #2 outputs 自清理 → 决定不实现，归入 5.6 设计决策
+> - #3 进度持久化 → 决定不实现，归入 5.6 设计决策
+> - #4 白名单继承 → 决定保持现状，归入 5.6 设计决策
+> - #5 多用户隔离 → 范围外，归入 5.5 部署边界
+> - #6 IndexTTS 并发 → GPU 资源决定，归入 5.6 设计决策
+> - #7 uploads/ 残留 → 已实现（启动时 `_clear_stale_uploads()`，见 5.5 启动清理）
 
 ---
 

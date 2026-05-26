@@ -230,11 +230,12 @@ def export_zip(char_id: str) -> tuple[str, str, str]:
 def import_zip(zip_file_obj) -> str:
     """
     Business Logic（为什么需要这个函数）:
-        用户拿到别人导出的角色包 ZIP 后能一键导入到自己的角色库。
+        用户拿到别人导出的角色包 ZIP 后能一键导入到自己的角色库；导入后必须保证
+        目录名与 library.json 内的 char_id 字段一致，避免历史数据不一致问题。
 
     Code Logic（这个函数做什么）:
-        把上传的 zip 解到临时目录，找到包含 library.json 的子目录，复制到 characters/
-        下新生成的 char_id 目录中。不验证业务字段的合法性。
+        把上传的 zip 解到临时目录 → 找到含 library.json 的子目录 → 复制到 characters/
+        下新生成的 char_id 目录中 → 把新 library.json 内的 char_id 字段刷成新目录名。
     """
     temp_dir = tempfile.mkdtemp()
     zip_path = os.path.join(temp_dir, "upload.zip")
@@ -264,6 +265,19 @@ def import_zip(zip_file_obj) -> str:
     final_dir = os.path.join(CHARACTERS_DIR, char_id)
     shutil.copytree(target_dir, final_dir)
     shutil.rmtree(temp_dir)
+
+    # 强制目录名 == library.json.char_id，消除历史包内的不一致
+    json_path = os.path.join(final_dir, "library.json")
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        if db.get("char_id") != char_id:
+            db["char_id"] = char_id
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(db, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ 导入后刷新 library.json.char_id 失败（已落盘但内部字段未对齐）: {e}")
+
     return char_id
 
 

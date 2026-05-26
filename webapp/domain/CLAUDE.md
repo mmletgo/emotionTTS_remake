@@ -6,10 +6,10 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `characters.py` | 角色目录的 CRUD：list_all / get_details / delete / rename / update_avatar / stage_uploads_for_create / stage_uploads_for_append / update_items / delete_item / export_zip / import_zip / find_character_by_name_or_id |
+| `characters.py` | 角色目录的 CRUD：list_all / get_details / delete / rename / update_avatar / stage_uploads_for_create / stage_uploads_for_append / update_items / delete_item / export_zip / import_zip（导入时自动把 library.json.char_id 刷成新目录名）/ find_character_by_name_or_id |
 | `library_builder.py` | 上传音频 → 静音切片 → Whisper 转录 → 写入 library.json。两个入口：`build_character_dataset`（新建）/ `append_character_dataset`（追加）|
-| `library_editor.py` | 已建好的素材库的二次编辑：merge_items_logic（多段合并）/ manual_split_logic（按时间切分 + Whisper 重写字幕） |
-| `matcher.py` | 智能匹配主流程 `match_for_text`：选候选池 → 调 `clients.llm.chat_json` → 解析 best_pool_id / emo_vector / emo_alpha → 情绪叠加 0.6 折算 |
+| `library_editor.py` | 已建好的素材库的二次编辑：merge_items_logic（多段合并）/ manual_split_logic（按时间切分 + Whisper 重写字幕）。新生成的 item `is_api_safe` 总是 false（不继承原 item，见 PRD 5.6） |
+| `matcher.py` | 智能匹配主流程 `match_for_text(char_id, text, llm_cfg, manual_emotion=None)`：选候选池 → 拼 system_prompt（manual_emotion 非空时追加锁定指令）→ 调 `clients.llm.chat_json` → 解析 best_pool_id / emo_vector / emo_alpha → manual_emotion 非空时强制覆盖 target_emotion → 情绪叠加 0.6 折算 |
 | `synthesizer.py` | 合成相关：synthesize_with_reference（拼 payload + 调 clients.tts.synthesize）/ merge_audio_files / normalize_sample_rate |
 | `text_splitter.py` | 长文本智能拆分（中英标点感知、缩写保护、二段折半切分等） |
 
