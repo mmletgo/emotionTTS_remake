@@ -7,15 +7,10 @@ import os
 import json
 from pydub import AudioSegment
 
-# 导入本地的其他工具模块
-from utils.audio_processor import get_cpu_whisper_model, clean_text
+from webapp.domain.library_builder import get_cpu_whisper_model, clean_text
 
-# ==========================================
-# 路径定义
-# ==========================================
-# 动态获取项目目录，保证在任何地方运行都不会路径错乱
-UTILS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(UTILS_DIR, "..", ".."))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
 CHARACTERS_DIR = os.path.join(PROJECT_ROOT, "characters")
 
 # 确保角色目录存在

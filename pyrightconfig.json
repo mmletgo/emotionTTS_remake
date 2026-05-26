@@ -3,13 +3,14 @@
   "venv": ".venv",
   "pythonVersion": "3.10",
   "extraPaths": [
-    "core",
-    "indexTTS_Server"
+    "."
   ],
   "exclude": [
     "**/__pycache__",
     "outputs",
     "characters",
-    "models"
+    "models",
+    "core",
+    "indexTTS_Server"
   ]
 }
