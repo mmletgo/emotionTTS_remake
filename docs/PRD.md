@@ -482,7 +482,18 @@ And 用户点击某条"选择"
 Then 该条作为 candidates[0] 写入 currentCandidates，并立即可触发合成
 ```
 
-> **已知缺口**：`MatchRequest` schema 中保留了 `manual_emotion: Optional[Dict[str, str]]` 字段（前端可发送），但后端 `domain.matcher.match_for_text` 当前实现忽略此字段，始终走 LLM 推断。"强制指定情绪"是历史遗留的未完成功能，相关前端模态框依然存在但实际不影响后端行为；详见 Open Questions。
+#### Scenario 2.8.3 强制指定情绪
+```gherkin
+Given 用户在 manualEmotionModal 显式指定 {primary:"怒", intensity:"High", complex:"咆哮"}
+When 前端 POST /api/match {char_id, text, manual_emotion:{...}}
+Then 后端 domain.matcher.match_for_text 接收 manual_emotion 参数后：
+  1. 把"用户已锁定目标情绪 + 候选选择/向量生成约束"追加到 system_prompt 末尾
+  2. 调 clients.llm.chat_json 让 LLM 在锁定情绪下选候选 + 生成 emo_vector / emo_alpha
+  3. 解析返回时强制覆盖 target_emotion = manual_emotion（防 LLM 不听话改写）
+  4. 防爆音 0.6 折算逻辑照常：若 manual_emotion.primary == 命中候选的 emotion.primary 则 emo_alpha *= 0.6
+And 返回结构与 Scenario 2.8.1 一致，target_emotion 字段保证等于 manual_emotion
+And primary / intensity / complex 任一字段缺失时优雅降级（只把存在的字段写入 directive）
+```
 
 #### Scenario 2.8.4 情绪向量精调
 ```gherkin
@@ -921,14 +932,13 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 
 > 写 PRD 时发现的、源代码未给出明确语义、需要产品决策的问题。
 
-1. **`manual_emotion` 字段未实现**：`MatchRequest.manual_emotion` 在 schema 中保留、前端有 `manualEmotionModal` UI 入口，但后端 `domain.matcher.match_for_text` 实际忽略此字段，始终走 LLM 推断。决策：补全后端实现 / 去掉前后端入口 / 二选一。
-2. **角色目录名 vs `library.json.char_id` 不一致**：现网真实数据中存在目录 `char_0484abf3` 内 `library.json` 写着 `char_66ff5e94`。当前后端用目录名寻址，导出/导入时按目录名保留——是否在导入时统一刷新内部 `char_id` 字段？
-3. **`outputs/` 自动清理策略**：是否引入按容量/时间的自动清理？目前完全靠用户手动。
-4. **后台任务进度持久化**：进程重启后 `api._progress.task_progress` 丢失，正在进行的素材构建若用户刷新页面会一无所知；是否要落盘到 json？
-5. **`is_api_safe` 默认值**：合并/切分产生的新 item 默认是 false，是否要支持"继承原 item 的白名单状态"？
-6. **多用户隔离**：当前是单机单用户假设，若部署到内网多人使用，需补充身份与作品空间隔离层。
-7. **本地 IndexTTS2 并发**：业务上是否允许排队？现在 `gpu_lock` 串行会让多个慢请求互相阻塞。
-8. **uploads/ 残留**：`tts_service/server.py` 在合成时往 `uploads/ref_*.wav` 写参考音，BackgroundTask 注册清理；若进程异常崩溃时未触发 BackgroundTask 会留下残留文件。
+1. **角色目录名 vs `library.json.char_id` 不一致**：现网真实数据中存在目录 `char_0484abf3` 内 `library.json` 写着 `char_66ff5e94`。当前后端用目录名寻址，导出/导入时按目录名保留——是否在导入时统一刷新内部 `char_id` 字段？
+2. **`outputs/` 自动清理策略**：是否引入按容量/时间的自动清理？目前完全靠用户手动。
+3. **后台任务进度持久化**：进程重启后 `api._progress.task_progress` 丢失，正在进行的素材构建若用户刷新页面会一无所知；是否要落盘到 json？
+4. **`is_api_safe` 默认值**：合并/切分产生的新 item 默认是 false，是否要支持"继承原 item 的白名单状态"？
+5. **多用户隔离**：当前是单机单用户假设，若部署到内网多人使用，需补充身份与作品空间隔离层。
+6. **本地 IndexTTS2 并发**：业务上是否允许排队？现在 `gpu_lock` 串行会让多个慢请求互相阻塞。
+7. **uploads/ 残留**：`tts_service/server.py` 在合成时往 `uploads/ref_*.wav` 写参考音，BackgroundTask 注册清理；若进程异常崩溃时未触发 BackgroundTask 会留下残留文件。
 
 ---
 

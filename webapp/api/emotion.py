@@ -34,7 +34,12 @@ async def match(req: MatchRequest) -> dict:
     active = cfg["llm"]["active_type"]
     llm_cfg = cfg["llm"]["configs"].get(active, {})
     try:
-        result = await matcher.match_for_text(req.char_id, req.text, llm_cfg)
+        result = await matcher.match_for_text(
+            req.char_id,
+            req.text,
+            llm_cfg,
+            manual_emotion=req.manual_emotion,
+        )
     except matcher.CharacterNotFound:
         raise HTTPException(status_code=404, detail=f"角色【{req.char_id}】不存在")
     except matcher.EmptyLibrary:

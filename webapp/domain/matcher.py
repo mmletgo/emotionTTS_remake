@@ -34,10 +34,39 @@ def _select_candidate_pool(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return safe if safe else valid
 
 
+def _format_manual_emotion_directive(manual_emotion: dict[str, str]) -> str:
+    """
+    Business Logic（为什么需要这个函数）:
+        用户在 manualEmotionModal 显式锁定了目标情绪三元组，需要告诉 LLM "情绪已定，
+        请在这个约束下挑选候选音 + 生成 emo_vector"，而不是让它自由发挥。
+
+    Code Logic（这个函数做什么）:
+        把 {primary, intensity, complex} 拼成一段中文指令；缺字段时优雅降级（不写空字段）。
+    """
+    primary = manual_emotion.get("primary", "")
+    intensity = manual_emotion.get("intensity", "")
+    complex_ = manual_emotion.get("complex", "")
+    parts: list[str] = []
+    if primary:
+        parts.append(f"primary={primary}")
+    if intensity:
+        parts.append(f"intensity={intensity}")
+    if complex_:
+        parts.append(f"complex={complex_}")
+    locked = "、".join(parts) if parts else "（空）"
+    return (
+        "\n\n【用户已手动锁定目标情绪，请严格遵守】\n"
+        f"目标情绪三元组：{locked}\n"
+        "你的任务：(1) 在候选库中挑出与该情绪最贴合的参考音；(2) 围绕该情绪生成 emo_vector"
+        " 和 emo_alpha；(3) target_emotion 字段必须**原样返回**用户锁定值，禁止改写。\n"
+    )
+
+
 async def match_for_text(
     char_id_or_name: str,
     text: str,
     llm_cfg: dict[str, Any],
+    manual_emotion: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     """
     Business Logic（为什么需要这个函数）:
@@ -45,9 +74,11 @@ async def match_for_text(
         最贴合的参考音并附带情绪向量。本函数统一这条主流程。
 
     Code Logic（这个函数做什么）:
-        1) 角色寻址（按目录名或角色名）；2) 选候选池；3) 调用 LLM advanced match；
-        4) 解析 best_pool_id / emo_vector / emo_alpha；5) 情绪叠加 0.6 折算防爆音；
-        6) 返回完整匹配结果。
+        1) 角色寻址（按目录名或角色名）；2) 选候选池；
+        3) 拼 system_prompt，若 manual_emotion 非空则追加锁定指令；
+        4) 调 LLM；5) 解析 best_pool_id / emo_vector / emo_alpha；
+        6) 若 manual_emotion 非空则强制覆盖 target_emotion（防 LLM 不听话）；
+        7) 情绪叠加 0.6 折算防爆音；8) 返回完整匹配结果。
     """
     found = char_repo.find_character_by_name_or_id(char_id_or_name)
     if found is None:
@@ -73,6 +104,8 @@ async def match_for_text(
         + "\n\n候选音频库：\n"
         + json.dumps(candidate_pool, ensure_ascii=False)
     )
+    if manual_emotion:
+        system_prompt += _format_manual_emotion_directive(manual_emotion)
 
     res_data = await llm_client.chat_json(text, llm_cfg, system_prompt, tag="高级匹配")
 
@@ -92,8 +125,15 @@ async def match_for_text(
     except (ValueError, TypeError):
         emo_alpha = 0.65
 
+    # target_emotion：手动锁定优先；否则用 LLM 返回值
+    if manual_emotion:
+        target_emo: dict[str, Any] = dict(manual_emotion)
+        print(f"   🔒 [手动锁定情绪] target_emotion 强制覆盖为用户值: {target_emo}")
+    else:
+        llm_target = res_data.get("target_emotion", {})
+        target_emo = llm_target if isinstance(llm_target, dict) else {}
+
     # 情绪叠加防爆音：目标与参考音主情绪一致时，把 alpha 打 6 折
-    target_emo = res_data.get("target_emotion", {})
     target_primary = target_emo.get("primary") if isinstance(target_emo, dict) else None
     ref_emo = best_item.get("emotion", {})
     ref_primary = ref_emo.get("primary") if isinstance(ref_emo, dict) else None
