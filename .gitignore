@@ -7,22 +7,19 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Runtime data (用户运行后才会产生的)
+# 运行时产物（本地生成、不入库）
 webapp/config/config.json
-outputs/*.wav
-outputs/*.mp3
-outputs/*.zip
+outputs/*
+!outputs/.gitkeep
 
-# 角色素材库较大、且因人而异：默认忽略，按需 git add
-characters/*/voice_lib/
-characters/*/*.png
-characters/*/*.jpg
-characters/*/*.jpeg
-characters/*/*.webp
+# 用户角色素材库：完全是本地数据，仓库不追踪任何内容
+characters/*
+!characters/.gitkeep
 
-# 大模型权重
-models/whisper-small/*.bin
+# Whisper 模型：权重大文件不入库，配置和词表已入库
+models/whisper-small/model.bin
 models/whisper-small/*.safetensors
+models/whisper-small/.cache/
 
 # macOS / IDE
 .DS_Store
