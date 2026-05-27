@@ -175,10 +175,11 @@ if [[ "$TTS_CHOICE" == "a" ]]; then
     ENABLE_LOCAL_TTS=true
     echo ""
     echo -e "${BOLD}2) IndexTTS 环境处理？${RESET}"
-    echo "   a) 我已经按官方 README 装好了，输入 .venv 路径"
-    echo "   b) 让脚本帮我全自动部署（需下载 IndexTTS 仓库 + 几 GB checkpoint）"
+    echo "   a) 我已经按官方 README 装好了，输入 .venv 路径（跳过下载）"
+    echo "   b) 让脚本帮我全自动部署（clone + uv sync + 下载几 GB checkpoint）"
+    echo "   c) 暂不安装，脚本只写配置 —— 之后我自己按文档手动装"
     echo ""
-    read -r -p "   请选择 [a/b，默认 a]: " INDEXTTS_ENV_CHOICE
+    read -r -p "   请选择 [a/b/c，默认 a]: " INDEXTTS_ENV_CHOICE
     INDEXTTS_ENV_CHOICE="${INDEXTTS_ENV_CHOICE:-a}"
     INDEXTTS_ENV_CHOICE="$(echo "$INDEXTTS_ENV_CHOICE" | tr '[:upper:]' '[:lower:]')"
 else
@@ -195,17 +196,23 @@ else
     ASR_QNUM=2
 fi
 echo -e "${BOLD}${ASR_QNUM}) ASR（语音识别）部署方式？${RESET}"
-echo "   a) 本地 Whisper（需下载 ~466MB 模型到 models/whisper-small/）"
-echo "   b) 云端 OpenAI 兼容 ASR API（如 OpenAI / Groq）"
+echo "   a) 本地 Whisper（自动下载 ~466MB 模型到 models/whisper-small/）"
+echo "   b) 本地 Whisper（暂不下载，我之后自己放进 models/whisper-small/）"
+echo "   c) 云端 OpenAI 兼容 ASR API（如 OpenAI / Groq）"
 echo ""
-read -r -p "   请选择 [a/b，默认 a]: " ASR_CHOICE
+read -r -p "   请选择 [a/b/c，默认 a]: " ASR_CHOICE
 ASR_CHOICE="${ASR_CHOICE:-a}"
 ASR_CHOICE="$(echo "$ASR_CHOICE" | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$ASR_CHOICE" == "a" ]]; then
     ENABLE_LOCAL_ASR=true
+    DOWNLOAD_ASR_MODEL=true
+elif [[ "$ASR_CHOICE" == "b" ]]; then
+    ENABLE_LOCAL_ASR=true
+    DOWNLOAD_ASR_MODEL=false
 else
     ENABLE_LOCAL_ASR=false
+    DOWNLOAD_ASR_MODEL=false
 fi
 
 echo ""
@@ -237,7 +244,18 @@ hr
 echo "  TTS 方式     : $( [[ "$ENABLE_LOCAL_TTS" == "true" ]] && echo "本地 IndexTTS2" || echo "云端 API")"
 echo "  ASR 方式     : $( [[ "$ENABLE_LOCAL_ASR" == "true" ]] && echo "本地 Whisper" || echo "云端 API")"
 if [[ "$ENABLE_LOCAL_TTS" == "true" ]]; then
-    echo "  IndexTTS 环境: $( [[ "$INDEXTTS_ENV_CHOICE" == "a" ]] && echo "使用已有 venv" || echo "全自动部署")"
+    case "$INDEXTTS_ENV_CHOICE" in
+        a) echo "  IndexTTS 安装: 使用已有 venv（跳过下载）" ;;
+        b) echo "  IndexTTS 安装: 全自动部署（clone + uv sync + 下 checkpoint）" ;;
+        c) echo "  IndexTTS 安装: 暂不安装（只写配置，之后手动）" ;;
+    esac
+fi
+if [[ "$ENABLE_LOCAL_ASR" == "true" ]]; then
+    if [[ "$DOWNLOAD_ASR_MODEL" == "true" ]]; then
+        echo "  Whisper 模型 : 自动下载（~466MB）"
+    else
+        echo "  Whisper 模型 : 暂不下载（只写配置，之后手动放到 models/whisper-small/）"
+    fi
 fi
 echo ""
 read -r -p "确认以上配置继续？[Y/n，默认 Y]: " CONFIRM
@@ -424,6 +442,35 @@ print('download ok via mirror')
         success "checkpoints 下载完成: $INDEXTTS_MODEL_DIR"
     fi
 
+# ── 情况 B2：TTS=local 但选「暂不安装」(c) ──────────────────────────────────
+elif [[ "$ENABLE_LOCAL_TTS" == "true" && "$INDEXTTS_ENV_CHOICE" == "c" ]]; then
+    warn "选择「暂不安装本地 TTS」—— 跳过 IndexTTS 部署"
+    echo "  注意：脚本只写配置，之后请你按 IndexTTS 官方文档手动装："
+    echo "    https://github.com/index-tts/index-tts"
+    echo "  装好后可重新跑 bash install.sh 选择 a（复用已有 venv）补完配置。"
+    echo ""
+    # 为 webapp / asr_service 建一个项目本地的轻量 .venv
+    VENV_DIR="$REPO_ROOT/.venv"
+    if [[ -d "$VENV_DIR" ]]; then
+        warn ".venv 已存在，跳过创建"
+    else
+        info "为 webapp / asr_service 创建项目 .venv（IndexTTS 之后自己装）"
+        if [[ "$HAS_UV" == "true" ]]; then
+            uv venv "$VENV_DIR" --python 3.10 2>/dev/null || \
+            uv venv "$VENV_DIR" 2>/dev/null || \
+            python3 -m venv "$VENV_DIR"
+        else
+            python3 -m venv "$VENV_DIR"
+        fi
+    fi
+    PYTHON_BIN="$VENV_DIR/bin/python"
+    [[ -x "$PYTHON_BIN" ]] || { error "venv 创建失败: $PYTHON_BIN"; exit 1; }
+    success "项目 .venv 就绪: $PYTHON_BIN"
+
+    # 标记 INDEXTTS_MODEL_DIR 为空（占位，待用户手动设置）
+    INDEXTTS_MODEL_DIR=""
+    # 防御性：start.sh 启动 tts_service 时会探测此变量，空则跳过
+
 # ── 情况 C：TTS=cloud + 新建 .venv ───────────────────────────────────────────
 elif [[ "$ENABLE_LOCAL_TTS" == "false" && "$PYTHON_ENV_CHOICE" == "new" ]]; then
     VENV_DIR="$REPO_ROOT/.venv"
@@ -498,8 +545,17 @@ hr
 info "检查/下载模型文件..."
 hr
 
-# ASR=local: 下载 Whisper 模型
-if [[ "$ENABLE_LOCAL_ASR" == "true" ]]; then
+# ASR=local: 下载 Whisper 模型（仅当用户选了「自动下载」）
+if [[ "$ENABLE_LOCAL_ASR" == "true" && "${DOWNLOAD_ASR_MODEL:-false}" != "true" ]]; then
+    WHISPER_DIR="$REPO_ROOT/models/whisper-small"
+    mkdir -p "$WHISPER_DIR"
+    warn "选择「暂不下载 Whisper 模型」—— 跳过下载"
+    echo "  之后请把模型文件放到: $WHISPER_DIR/"
+    echo "  下载方式（任一）:"
+    echo "    huggingface-cli download Systran/faster-whisper-small --local-dir=$WHISPER_DIR"
+    echo "    或: git clone https://huggingface.co/Systran/faster-whisper-small $WHISPER_DIR"
+    echo "    国内镜像: HF_ENDPOINT=https://hf-mirror.com 前缀任一上面命令"
+elif [[ "$ENABLE_LOCAL_ASR" == "true" ]]; then
     WHISPER_DIR="$REPO_ROOT/models/whisper-small"
     mkdir -p "$WHISPER_DIR"
 
