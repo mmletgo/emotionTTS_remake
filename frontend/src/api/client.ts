@@ -213,13 +213,20 @@ export async function getCharacterDetails(charId: string): Promise<CharacterDeta
 }
 
 /**
- * POST /api/characters — 新建角色（multipart: char_name, files[], avatar?, min_silence_len?）
+ * POST /api/characters — 新建角色（multipart: char_name, files[], avatar?, min_silence_len?, enable_llm_tagging?）
  * 后端返回 {status, char_id}，建角色是后台任务，用 char_id 轮询 /api/progress/{char_id}
+ *
+ * Business Logic:
+ *   新建角色时用户可选是否启用 LLM 情绪打标。默认开启，可在 BuildCharacterView 中关闭以加快处理速度。
+ *
+ * Code Logic:
+ *   将 enableLlmTagging 布尔值转为字符串 "true"/"false" 追加到 FormData，
+ *   后端 Form(True) 接收该字段。
  */
 export async function createCharacter(
   charName: string,
   audioFiles: File[],
-  options?: { avatar?: File; minSilenceLen?: number },
+  options?: { avatar?: File; minSilenceLen?: number; enableLlmTagging?: boolean },
 ): Promise<CharCreateResponse> {
   const form = new FormData();
   form.append('char_name', charName);
@@ -229,22 +236,33 @@ export async function createCharacter(
   if (options?.avatar) {
     form.append('avatar', options.avatar);
   }
+  // enable_llm_tagging 默认 true，只有明确 false 时才关闭
+  form.append('enable_llm_tagging', options?.enableLlmTagging === false ? 'false' : 'true');
   for (const f of audioFiles) {
     form.append('files', f);
   }
   return apiForm<CharCreateResponse>('/api/characters', form, 'POST');
 }
 
-/** POST /api/characters/{char_id}/append — 追加音频到已有角色 */
+/**
+ * POST /api/characters/{char_id}/append — 追加音频到已有角色
+ *
+ * Business Logic:
+ *   追加音频时也支持可选的 LLM 情绪打标，用户可在 append sheet 中控制。
+ *
+ * Code Logic:
+ *   将 enableLlmTagging 转为 form field enable_llm_tagging，与 createCharacter 保持一致。
+ */
 export async function appendToCharacter(
   charId: string,
   audioFiles: File[],
-  options?: { minSilenceLen?: number },
+  options?: { minSilenceLen?: number; enableLlmTagging?: boolean },
 ): Promise<StatusResponse> {
   const form = new FormData();
   if (options?.minSilenceLen !== undefined) {
     form.append('min_silence_len', String(options.minSilenceLen));
   }
+  form.append('enable_llm_tagging', options?.enableLlmTagging === false ? 'false' : 'true');
   for (const f of audioFiles) {
     form.append('files', f);
   }
@@ -252,6 +270,30 @@ export async function appendToCharacter(
     `/api/characters/${encodeURIComponent(charId)}/append`,
     form,
     'POST',
+  );
+}
+
+/**
+ * POST /api/characters/{char_id}/relabel — 对已有素材重新进行 LLM 情绪打标
+ *
+ * Business Logic:
+ *   用户在详情页希望对全量或选定片段重新跑 LLM 打标，纠正错误的情绪标签。
+ *   与"AI 情绪分析"（前端逐条 analyze_emotion）不同，本端点由后端批量处理。
+ *
+ * Code Logic:
+ *   发送 JSON body {item_ids: number[]|null}，null 表示全量重标。
+ *   后端返回 {status, task_id}，前端用 task_id 轮询 /api/progress/{task_id}。
+ */
+export async function relabelCharacter(
+  charId: string,
+  itemIds?: number[],
+): Promise<{ task_id: string }> {
+  return api<{ task_id: string }>(
+    `/api/characters/${encodeURIComponent(charId)}/relabel`,
+    {
+      method: 'POST',
+      ...json({ item_ids: itemIds ?? null }),
+    },
   );
 }
 

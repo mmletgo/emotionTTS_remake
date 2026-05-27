@@ -1,13 +1,15 @@
 """
 角色素材管理模块 (Character Manager)
-处理针对角色音频库的复杂业务逻辑，例如：音频片段的合并、手动切割、字幕重写等。
+处理针对角色音频库的复杂业务逻辑，例如：音频片段的合并、手动切割、字幕重写、LLM 情绪重标等。
 """
 
 import os
 import json
+from typing import Any, Callable
 from pydub import AudioSegment
 
-from webapp.domain.library_builder import clean_text, _get_asr_cfg
+from webapp.domain.library_builder import clean_text, _get_asr_cfg, _get_llm_cfg_for_builder
+from webapp.domain.emotion_tagger import tag_items_sync
 from webapp.clients.asr import transcribe as asr_transcribe, AsrError
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -250,3 +252,67 @@ def manual_split_logic(char_id: str, item_id: int, split_time: float):
     db["items"] = items
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
+
+
+def relabel_emotions_logic(
+    char_id: str,
+    item_ids: list[int] | None,
+    progress_callback: Callable[..., None],
+) -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        用户希望对已有素材库重新做 LLM 情绪打标（比如初次建库时 LLM 未配置导致全部默认"平"，
+        配置好后通过此接口一键重标），系统需要支持全量或指定 item_ids 的局部重标。
+
+    Code Logic（这个函数做什么）:
+        读取 library.json → 按 item_ids 过滤目标 items（None 表示全量）→
+        调用 emotion_tagger.tag_items_sync 批量打标 → 把成功打标的 emotion 字段覆盖回去 →
+        保存 library.json。progress_callback 用 stage='tagging'，从 0% 到 100%。
+        LLM 配置不可用时抛 EmotionTaggerError 给上层（由 api 层翻译为 HTTPException）。
+    """
+    char_dir = os.path.join(CHARACTERS_DIR, char_id)
+    json_path = os.path.join(char_dir, "library.json")
+
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"找不到角色配置文件: {char_id}")
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        db: dict[str, Any] = json.load(f)
+
+    all_items: list[dict[str, Any]] = db.get("items", [])
+
+    # 过滤目标 items
+    if item_ids is not None:
+        safe_ids = set(item_ids)
+        target_items = [item for item in all_items if int(item.get("id", -1)) in safe_ids]
+    else:
+        target_items = list(all_items)
+
+    if not target_items:
+        progress_callback(100, "没有需要重标的素材。", status="success", stage="tagging")
+        return
+
+    total = len(target_items)
+
+    def _batch_progress(done: int, _total: int) -> None:
+        pct = int((done / _total) * 100)
+        progress_callback(pct, f"🏷️ LLM 情绪重标: {done}/{_total} 条...", stage="tagging")
+
+    progress_callback(0, f"🏷️ 开始 LLM 情绪重标，共 {total} 条...", stage="tagging")
+
+    llm_cfg = _get_llm_cfg_for_builder()
+    # EmotionTaggerError 不捕获，让调用方（api 层）翻译为 HTTPException
+    tagged = tag_items_sync(target_items, llm_cfg, batch_size=15, progress_callback=_batch_progress)
+
+    # 把成功打标的 emotion 覆盖回 all_items
+    id_to_emotion: dict[int, dict[str, str]] = tagged
+    for item in all_items:
+        item_id = int(item.get("id", -1))
+        if item_id in id_to_emotion:
+            item["emotion"] = id_to_emotion[item_id]
+
+    db["items"] = all_items
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(db, f, ensure_ascii=False, indent=2)
+
+    progress_callback(100, f"✅ 情绪重标完成，成功标记 {len(tagged)} 条。", status="success", stage="tagging")

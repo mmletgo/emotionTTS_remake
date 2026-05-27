@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from webapp.clients.asr import transcribe as asr_transcribe, AsrError
 from webapp.settings import get_config
+from webapp.domain.emotion_tagger import tag_items_sync, EmotionTaggerError
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # ffmpeg / ffprobe 信任系统 PATH；用户需自行确保已安装（macOS: brew install ffmpeg）
@@ -46,6 +47,60 @@ def _get_asr_cfg() -> dict[str, Any]:
     """
     cfg = get_config()
     return cfg.get("asr", {})  # type: ignore[return-value]
+
+
+def _get_llm_cfg_for_builder() -> dict[str, Any]:
+    """
+    Business Logic（为什么需要这个函数）:
+        library_builder 在 LLM 打标阶段需要当前激活的 LLM 配置；
+        统一从 settings 读取，避免硬编码，与 emotion_tagger._get_llm_cfg 逻辑对齐。
+
+    Code Logic（这个函数做什么）:
+        调用 settings.get_config() 返回完整配置，提取 llm.configs[active_type] 子字典返回。
+    """
+    cfg = get_config()
+    llm_section: dict[str, Any] = cfg.get("llm", {})
+    active_type: str = llm_section.get("active_type", "ollama")
+    configs: dict[str, Any] = llm_section.get("configs", {})
+    return configs.get(active_type, {})  # type: ignore[return-value]
+
+
+def _apply_llm_tags(
+    library_data: list[dict[str, Any]],
+    llm_cfg: dict[str, Any],
+    progress_callback: Callable[..., None],
+    progress_start: int = 50,
+    progress_end: int = 90,
+) -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        ASR 完成后需要对所有素材跑 LLM 情绪打标，把打标结果合并回 library_data；
+        该函数统一封装了打标流程，供 build/append 两个入口复用。
+
+    Code Logic（这个函数做什么）:
+        调用 emotion_tagger.tag_items_sync，把成功打标的 emotion 字段覆盖到对应 item；
+        通过 progress_callback 在 [progress_start, progress_end] 范围内按 batch 递增上报进度，stage='tagging'；
+        EmotionTaggerError 时打印警告跳过（全部保持默认"平"），不中断流程。
+    """
+    total = len(library_data)
+    if total == 0:
+        return
+
+    done_holder: list[int] = [0]
+
+    def _batch_progress(done: int, _total: int) -> None:
+        done_holder[0] = done
+        pct = progress_start + int((done / _total) * (progress_end - progress_start))
+        progress_callback(pct, f"🏷️ LLM 情绪打标中: {done}/{_total} 条...", stage="tagging")
+
+    try:
+        tagged = tag_items_sync(library_data, llm_cfg, batch_size=15, progress_callback=_batch_progress)
+        for item in library_data:
+            item_id: int = int(item.get("id", -1))
+            if item_id in tagged:
+                item["emotion"] = tagged[item_id]
+    except EmotionTaggerError as e:
+        print(f"⚠️ LLM 打标跳过（配置不可用）: {e}")
 
 
 def _transcribe_segment(filepath: str, asr_cfg: dict[str, Any]) -> str:
@@ -89,26 +144,29 @@ def build_character_dataset(
     output_dir: str,
     min_silence_len: float,
     progress_callback: Callable[..., None],
+    enable_llm_tagging: bool = True,
 ) -> None:
     """
     Business Logic（为什么需要这个函数）:
-        用户上传参考音频后，系统需要自动切分、转录、打标，生成角色素材库 library.json，
+        用户上传参考音频后，系统需要自动切分、转录、LLM 情绪打标，生成角色素材库 library.json，
         这是整个「角色素材库」核心能力的入口函数（新建角色流程）。
+        enable_llm_tagging=True 时在 ASR 后额外跑 LLM 批量打标，提升情绪匹配质量。
 
     Code Logic（这个函数做什么）:
-        1) 对每个上传文件独立做静音切分（split_on_silence）；
-        2) 对每个有效音频段（>0.5s）调 ASR 服务转录；
-        3) 转录成功的段保存为 voice_lib/{char_id}_NNNN.wav，写入 library.json；
-        4) 全程通过 progress_callback 上报进度。
+        1) 对每个上传文件独立做静音切分（split_on_silence），stage='slicing'；
+        2) 对每个有效音频段（>0.5s）调 ASR 服务转录，stage='asr'；
+        3) enable_llm_tagging=True 时调 _apply_llm_tags 批量打标，stage='tagging'；
+        4) 写入 library.json，stage='writing'；
+        5) 全程通过 progress_callback 上报进度。
     """
     try:
-        progress_callback(5, f"正在初始化目录配置...")
+        progress_callback(5, "正在初始化目录配置...", stage="slicing")
         char_dir = os.path.join(output_dir, char_id)
         voice_lib_dir = os.path.join(char_dir, "voice_lib")
         os.makedirs(voice_lib_dir, exist_ok=True)
         json_path = os.path.join(char_dir, "library.json")
 
-        progress_callback(10, "🔪 正在对每个上传的文件进行独立切分处理...")
+        progress_callback(10, "🔪 正在对每个上传的文件进行独立切分处理...", stage="slicing")
         silence_ms = int(min_silence_len * 1000)
         chunks: list[AudioSegment] = []
 
@@ -136,7 +194,11 @@ def build_character_dataset(
             if current_dur < 0.5:
                 continue
 
-            progress_callback(15 + int((i / total_chunks) * 80), f"💻 识别中: 第 {i + 1}/{total_chunks} 段音频...")
+            progress_callback(
+                15 + int((i / max(total_chunks, 1)) * 35),
+                f"💻 识别中: 第 {i + 1}/{total_chunks} 段音频...",
+                stage="asr",
+            )
 
             filename = f"{char_id}_{i:04d}.wav"
             filepath = os.path.join(voice_lib_dir, filename)
@@ -160,6 +222,15 @@ def build_character_dataset(
             })
             valid_chunks += 1
 
+        # LLM 批量情绪打标（50%-90%）
+        if enable_llm_tagging and library_data:
+            progress_callback(50, "🏷️ 开始 LLM 情绪打标...", stage="tagging")
+            llm_cfg = _get_llm_cfg_for_builder()
+            _apply_llm_tags(library_data, llm_cfg, progress_callback, progress_start=50, progress_end=90)
+        else:
+            progress_callback(90, "跳过 LLM 打标，使用默认情绪...", stage="writing")
+
+        progress_callback(90, "📝 正在写入 library.json...", stage="writing")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump({"char_id": char_id, "char_name": char_name, "items": library_data}, f, ensure_ascii=False,
                       indent=2)
@@ -182,20 +253,24 @@ def append_character_dataset(
     output_dir: str,
     min_silence_len: float,
     progress_callback: Callable[..., None],
+    enable_llm_tagging: bool = True,
 ) -> None:
     """
     Business Logic（为什么需要这个函数）:
-        用户向已有角色补充新音频时，系统需要追加切分、转录、入库，
+        用户向已有角色补充新音频时，系统需要追加切分、转录、LLM 情绪打标、入库，
         且不覆盖已有素材（追加到 library.json 的 items 末尾）。
+        enable_llm_tagging=True 时在 ASR 后额外跑 LLM 批量打标，提升情绪匹配质量。
 
     Code Logic（这个函数做什么）:
         1) 读取已有 library.json，找到当前最大 id 作为新段的起始 id；
-        2) 对新上传文件独立做静音切分；
-        3) 对每个有效段调 ASR 服务转录，保存文件，写入 library.json；
-        4) 全程通过 progress_callback 上报进度。
+        2) 对新上传文件独立做静音切分，stage='slicing'；
+        3) 对每个有效段调 ASR 服务转录，stage='asr'；
+        4) enable_llm_tagging=True 时调 _apply_llm_tags 批量打标，stage='tagging'；
+        5) 写入 library.json，stage='writing'；
+        6) 全程通过 progress_callback 上报进度。
     """
     try:
-        progress_callback(5, f"正在初始化目录配置...")
+        progress_callback(5, "正在初始化目录配置...", stage="slicing")
         char_dir = os.path.join(output_dir, char_id)
         voice_lib_dir = os.path.join(char_dir, "voice_lib")
         os.makedirs(voice_lib_dir, exist_ok=True)
@@ -206,7 +281,7 @@ def append_character_dataset(
         existing_items: list[dict[str, Any]] = db_content.get("items", [])
         start_chunk_index = max([item.get("id", -1) for item in existing_items] + [-1]) + 1
 
-        progress_callback(10, "🔪 正在对新上传的文件进行独立切分处理...")
+        progress_callback(10, "🔪 正在对新上传的文件进行独立切分处理...", stage="slicing")
         silence_ms = int(min_silence_len * 1000)
         chunks: list[AudioSegment] = []
 
@@ -233,7 +308,11 @@ def append_character_dataset(
             if current_dur < 0.5:
                 continue
 
-            progress_callback(15 + int((i / total_chunks) * 80), f"💻 识别中: 第 {i + 1}/{total_chunks} 段...")
+            progress_callback(
+                15 + int((i / max(total_chunks, 1)) * 35),
+                f"💻 识别中: 第 {i + 1}/{total_chunks} 段...",
+                stage="asr",
+            )
             chunk_id = start_chunk_index + valid_chunks
             filename = f"{char_id}_append_{chunk_id:04d}_{uuid.uuid4().hex[:4]}.wav"
             filepath = os.path.join(voice_lib_dir, filename)
@@ -257,6 +336,15 @@ def append_character_dataset(
             })
             valid_chunks += 1
 
+        # LLM 批量情绪打标（50%-90%）
+        if enable_llm_tagging and new_library_data:
+            progress_callback(50, "🏷️ 开始 LLM 情绪打标...", stage="tagging")
+            llm_cfg = _get_llm_cfg_for_builder()
+            _apply_llm_tags(new_library_data, llm_cfg, progress_callback, progress_start=50, progress_end=90)
+        else:
+            progress_callback(90, "跳过 LLM 打标，使用默认情绪...", stage="writing")
+
+        progress_callback(90, "📝 正在写入 library.json...", stage="writing")
         db_content["items"].extend(new_library_data)
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(db_content, f, ensure_ascii=False, indent=2)

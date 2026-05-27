@@ -13,7 +13,8 @@ import Icon from '../icons/Icon'
 export type ViewName = 'studio' | 'library' | 'settings'
 
 interface TopNavProps {
-  activeView: ViewName
+  /** 当前激活 view；为 null 表示三个 tab 都不激活（例如展示 BuildCharacterView 全屏视图时）。 */
+  activeView: ViewName | null
   onViewChange: (v: ViewName) => void
 }
 

@@ -7,8 +7,9 @@
 | 文件 | 职责 |
 | --- | --- |
 | `characters.py` | 角色目录的 CRUD：list_all / get_details / delete / rename / update_avatar / stage_uploads_for_create / stage_uploads_for_append / update_items / delete_item / export_zip / import_zip（导入时自动把 library.json.char_id 刷成新目录名）/ find_character_by_name_or_id |
-| `library_builder.py` | 上传音频 → 静音切片 → 调 ASR 微服务转录 → 写入 library.json。两个入口：`build_character_dataset`（新建）/ `append_character_dataset`（追加）。**不再直接依赖 faster-whisper**，通过 `clients.asr.transcribe` 调 OpenAI 兼容 `/v1/audio/transcriptions`（本地 9900 或云端），配置从 `settings.get_config()['asr']` 读取。|
-| `library_editor.py` | 已建好的素材库的二次编辑：merge_items_logic（多段合并）/ manual_split_logic（按时间切分 + ASR 重写字幕）。同样通过 `clients.asr.transcribe` 调 ASR 服务，不直接依赖 faster-whisper。新生成的 item `is_api_safe` 总是 false（不继承原 item，见 PRD 5.6） |
+| `library_builder.py` | 上传音频 → 静音切片（stage='slicing'）→ 调 ASR 微服务转录（stage='asr'）→ LLM 批量情绪打标（stage='tagging'，可选）→ 写入 library.json（stage='writing'）。两个入口：`build_character_dataset`（新建，`enable_llm_tagging` 参数控制是否打标）/ `append_character_dataset`（追加，同）。通过 `clients.asr.transcribe` 调 OpenAI 兼容 `/v1/audio/transcriptions`；LLM 打标通过 `domain.emotion_tagger.tag_items_sync` 批量调 LLM。|
+| `library_editor.py` | 已建好的素材库的二次编辑：merge_items_logic（多段合并）/ manual_split_logic（按时间切分 + ASR 重写字幕）/ **relabel_emotions_logic**（对已有 items 重跑 LLM 情绪打标，item_ids=None 表示全量）。LLM 配置不可用时 relabel 抛 EmotionTaggerError，由 api 层翻译为 500。新生成的 item `is_api_safe` 总是 false（不继承原 item，见 PRD 5.6）|
+| `emotion_tagger.py` | LLM 批量情绪打标。`tag_items_sync(items, llm_cfg, batch_size=15, progress_callback)` 将 items 分组，每组一次 `asyncio.run(llm_client.chat_json(...))` 调用（sync 调 async 安全用法：threadpool 无 event loop）；单组失败打印警告跳过不抛出；llm_cfg 不可用（api_base/model 为空）时抛 `EmotionTaggerError`。|
 | `matcher.py` | 智能匹配主流程 `match_for_text(char_id, text, llm_cfg, manual_emotion=None, api_priority=True)`：选候选池（api_priority 控制是否启用 is_api_safe 独占）→ 拼 system_prompt（manual_emotion 非空时追加锁定指令）→ 调 `clients.llm.chat_json` → 解析 best_pool_id / emo_vector / emo_alpha → manual_emotion 非空时强制覆盖 target_emotion → 情绪叠加 0.6 折算 |
 | `synthesizer.py` | 合成相关：synthesize_with_reference（拼 payload + 调 clients.tts.synthesize）/ merge_audio_files / normalize_sample_rate |
 | `text_splitter.py` | 长文本智能拆分（中英标点感知、缩写保护、二段折半切分等） |

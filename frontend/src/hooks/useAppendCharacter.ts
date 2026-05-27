@@ -17,12 +17,16 @@ interface AppendInput {
   charId: string;
   audioFiles: File[];
   minSilenceLen?: number;
+  /** 是否启用 LLM 情绪打标，默认 true（向后兼容） */
+  enableLlmTagging?: boolean;
 }
 
 interface AppendState {
   progress: number;
   msg: string;
   status: TaskStatus;
+  /** 当前处理阶段，来自后端 stage 字段 */
+  stage: 'slicing' | 'asr' | 'tagging' | 'writing' | null;
   done: boolean;
   error: string | null;
 }
@@ -37,6 +41,7 @@ const INITIAL: AppendState = {
   progress: 0,
   msg: '',
   status: 'running',
+  stage: null,
   done: false,
   error: null,
 };
@@ -53,6 +58,7 @@ export function useAppendCharacter(): UseAppendCharacterResult {
     try {
       await appendToCharacter(input.charId, input.audioFiles, {
         minSilenceLen: input.minSilenceLen,
+        enableLlmTagging: input.enableLlmTagging,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -78,6 +84,7 @@ export function useAppendCharacter(): UseAppendCharacterResult {
               progress: res.progress,
               msg: res.msg,
               status: res.status,
+              stage: res.stage,
               done: res.status !== 'running',
             }));
             if (res.status === 'running') {
