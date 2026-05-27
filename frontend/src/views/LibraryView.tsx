@@ -864,6 +864,15 @@ export default function LibraryView({ characters: _characters, onBuildChar, newC
       <div className="lib-head">
         <div className="lib-title">素材库</div>
         <div className="lib-tools">
+          <a
+            className="btn-chip"
+            href="https://fcnyjzag5gcf.feishu.cn/share/base/view/shrcnYdPOoALXzJl0cwsEFGthkb"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="打开外部素材资源库（飞书多维表格）"
+          >
+            <Icon name="external" size={14} /> 素材资源库
+          </a>
           <button className="btn-chip" onClick={() => importInputRef.current?.click()}>
             <Icon name="package" size={14} /> 导入 ZIP
           </button>

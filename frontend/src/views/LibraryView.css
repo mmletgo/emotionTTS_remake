@@ -179,6 +179,7 @@
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 13px; color: var(--ink-2); font-weight: 500;
+  text-decoration: none;
   transition: border-color .15s, color .15s, background .15s;
   cursor: pointer;
   position: relative;
