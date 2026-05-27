@@ -35,3 +35,4 @@ models/whisper-small/.cache/
 
 # Claude Code 工作目录（agent 临时 worktree 等）
 .claude/
+/tts_service/uploads
