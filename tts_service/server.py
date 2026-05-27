@@ -215,6 +215,12 @@ def generate_speech(req: SpeechReq, background_tasks: BackgroundTasks):
 
 
 if __name__ == "__main__":
+    import sys
+    # Windows 上 uvicorn 使用 ProactorEventLoop 会与某些异步 IO 不兼容；
+    # 强制使用 SelectorEventLoop 确保跨平台行为一致
+    if sys.platform == "win32":
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     _clear_stale_uploads()
     _init_engine()
     print(f"🚀 IndexTTS2 server listening on http://0.0.0.0:{PORT}")

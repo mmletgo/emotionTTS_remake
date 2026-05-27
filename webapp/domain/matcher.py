@@ -166,7 +166,10 @@ async def match_for_text(
                 "text": best_item["text"],
                 "emotion": best_item["emotion"],
                 "filename": best_item["filename"],
-                "ref_audio_url": f"/characters/{char_id}/{best_item['filename']}",
+                # filename 在 JSON 中统一用 forward slash 存储，但 Windows 上落盘
+                # 时可能含反斜杠，构造 URL 时强制替换为 forward slash
+                "ref_audio_url": "/characters/{}/{}" .format(
+                    char_id, best_item["filename"].replace("\\", "/")),
                 "reason": res_data["candidates"][0].get("reason", "AI 智能匹配"),
             }
         ],

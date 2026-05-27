@@ -195,7 +195,9 @@ def delete_item(char_id: str, item_id: str) -> None:
     target = next((item for item in db.get("items", []) if str(item["id"]) == item_id), None)
     if target is None:
         raise KeyError(item_id)
-    file_path = os.path.join(CHARACTERS_DIR, char_id, target["filename"])
+    # filename 在 JSON 中始终以 forward slash 存储（"voice_lib/xxx.wav"），
+    # 需要替换为当前系统路径分隔符，避免 Windows 上产生混合路径
+    file_path = os.path.join(CHARACTERS_DIR, char_id, target["filename"].replace("/", os.sep))
     if os.path.exists(file_path):
         try:
             os.remove(file_path)

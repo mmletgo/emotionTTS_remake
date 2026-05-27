@@ -7,6 +7,7 @@ LLM 批量情绪打标。
 
 import asyncio
 import json
+import sys
 from typing import Any, Callable
 
 from webapp.clients import llm as llm_client
@@ -127,9 +128,22 @@ def tag_items_sync(
         user_content = json.dumps(user_payload, ensure_ascii=False)
 
         try:
-            raw = asyncio.run(
-                llm_client.chat_json(user_content, llm_cfg, BATCH_EMOTION_TAGGING_PROMPT, "batch_emotion_tagging")
-            )
+            # Windows 上 asyncio.run() 默认使用 ProactorEventLoop，
+            # 而 httpx 与 ProactorEventLoop 在部分版本组合下不兼容（连接复用问题）。
+            # 在 threadpool 中（无 event loop）手动创建 SelectorEventLoop 确保跨平台一致性。
+            if sys.platform == "win32":
+                loop = asyncio.SelectorEventLoop()
+                asyncio.set_event_loop(loop)
+                try:
+                    raw = loop.run_until_complete(
+                        llm_client.chat_json(user_content, llm_cfg, BATCH_EMOTION_TAGGING_PROMPT, "batch_emotion_tagging")
+                    )
+                finally:
+                    loop.close()
+            else:
+                raw = asyncio.run(
+                    llm_client.chat_json(user_content, llm_cfg, BATCH_EMOTION_TAGGING_PROMPT, "batch_emotion_tagging")
+                )
             batch_result = _parse_tag_result(raw)
             tagged.update(batch_result)
         except Exception as e:
