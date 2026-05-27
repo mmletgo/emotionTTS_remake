@@ -98,7 +98,7 @@ emotionTTS_v4.5/
 1. **本地 TTS 必须用户手动启动**：`main.py` 不会自动拉起 9800；用户需在 indextts env 中跑 `python tts_service/server.py`。
 2. **本地 ASR 也必须用户手动启动**：`main.py` 不会自动拉起 9900；用户需在 indextts env 中跑 `python asr_service/server.py`。使用云端 ASR（如 OpenAI）时配置 `asr.type=cloud` + `api_base` + `api_key` 即可，不需要启动本地服务。ASR 配置读自 `config.json` 的 `asr` 节（`settings.py` 管理，旧 config.json 无此节时自动回填默认）。
 3. **api/domain/clients 三层不能跨越**：api 调 domain，domain 调 clients；不允许 api 直接 import httpx 或 api 直接读写文件。详见各层 mini-CLAUDE.md。
-4. **`/v1/audio/speech` 与 `/api/match`+`/api/synthesize` 共用业务核心**：都走 `domain.matcher.match_for_text` + `domain.synthesizer.synthesize_with_reference`，行为一致；区别仅在 OpenAI 兼容路径有 24kHz 重采样与括号清洗。
+4. **`/v1/audio/speech` 与 `/api/match`+`/api/synthesize` 共用业务核心**：都走 `domain.matcher.match_for_text` + `domain.synthesizer.synthesize_with_reference`，行为一致；区别仅在 OpenAI 兼容路径有 24kHz 重采样与括号清洗。外部发现可用角色走 `GET /v1/voices`（OpenAI list 协议），复用 `domain.characters.list_all`，返回 id/name/avatar_url/sample_count/emotion_count/preview_audio_url。
 5. **情绪叠加 0.6 折算**：`domain/matcher.py` 中当目标主情绪与参考音一致时把 emo_alpha 乘 0.6 防爆音——不要在 api 层重复实现。
 6. **manual_emotion 强制覆盖 target_emotion**：用户在 `manualEmotionModal` 锁定情绪后，`matcher` 仍调 LLM 选候选 + 生成向量，但最终返回的 `target_emotion` 一定 == 用户值（双保险：prompt 指令 + 后端强覆盖）。
 7. **`emo_vector` 偷渡协议**：`clients/tts.py` 把 `voice` 字段写成 `[EMO:[v0..v7]|alpha]base64:...`；`tts_service/server.py` 入口处用正则剥离。两端必须同步。

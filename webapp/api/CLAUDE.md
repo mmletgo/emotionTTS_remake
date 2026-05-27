@@ -10,7 +10,7 @@ HTTP **薄壳**层。每个 router 只做：拿请求参数 → 调 `webapp.doma
 | `characters.py` | `/api/characters*`（CRUD 列表 / 创建 / 追加 / 详情 / 改名 / 头像 / 进度 / items 编辑 / 合并 / 切分 / 导入导出 / **情绪重标 `/relabel`**）。创建和追加端点新增 `enable_llm_tagging: bool = Form(True)` 控制是否在 ASR 后跑 LLM 打标。`POST /relabel` 接受可选 body `{"item_ids": [...] | null}`，后台异步运行，进度通过 `/api/progress/{char_id}_relabel` 查询。|
 | `emotion.py` | `/api/analyze_emotion` · `/api/match` · `/api/split_text` |
 | `synthesis.py` | `/api/synthesize` · `/api/outputs/merge` |
-| `openai_compat.py` | `/v1/audio/speech` |
+| `openai_compat.py` | `/v1/audio/speech`（OpenAI 兼容 TTS，voice 字段接受角色名或 char_id）· `/v1/voices`（GET，列出可用角色，OpenAI list 协议 `{"object":"list","data":[...]}`，复用 `domain.characters.list_all`） |
 | `_progress.py` | 跨 router 共享的进程内 task_progress 字典（不是 router，不挂载） |
 
 ## 约束
