@@ -245,7 +245,7 @@ export default function StudioView({
     const finalVector: EmotionVector | null =
       singleOverrides.vector ?? cache?.emo_vector ?? null
     const finalAlpha: number =
-      singleOverrides.alpha ?? cache?.emo_alpha ?? 0.65
+      singleOverrides.alpha ?? cache?.emo_alpha ?? uiSettings.default_alpha
     const finalEmotion = singleOverrides.emotion ?? cache?.target_emotion
 
     if (!finalRefFilename) return
@@ -284,7 +284,7 @@ export default function StudioView({
     setActiveCandidateIdx(idx)
 
     const finalVector: EmotionVector | null = singleOverrides.vector ?? singleLlmCache.emo_vector ?? null
-    const finalAlpha: number = singleOverrides.alpha ?? singleLlmCache.emo_alpha ?? 0.65
+    const finalAlpha: number = singleOverrides.alpha ?? singleLlmCache.emo_alpha ?? uiSettings.default_alpha
 
     const { audio_url } = await runSynth({
       char_id: activeChar.char_id,
@@ -428,7 +428,7 @@ export default function StudioView({
 
     const finalVector: EmotionVector | null = overrides.vector ?? cache?.emo_vector ?? null
     // alpha：override 优先，否则 llmCache * globalAlpha
-    const backendAlpha = cache?.emo_alpha ?? 0.65
+    const backendAlpha = cache?.emo_alpha ?? uiSettings.default_alpha
     const finalAlpha: number =
       overrides.alpha !== null
         ? overrides.alpha
