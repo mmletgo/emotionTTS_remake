@@ -34,7 +34,9 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "  bash install.sh --help    显示此帮助信息"
     echo ""
     echo "脚本会引导你完成以下步骤："
-    echo "  1. 检测系统环境（OS / python3 / ffmpeg / git / curl）"
+    echo "  1. 检测系统环境（OS / python3 / ffmpeg / git / curl），缺失时自动安装"
+    echo "     · macOS：通过 Homebrew 安装（无 brew 时先装 brew）"
+    echo "     · Linux：自动选择 apt / dnf / yum / pacman / zypper"
     echo "  2. 选择 TTS 部署方式（本地 IndexTTS2 或云端 API）"
     echo "  3. 选择 ASR 部署方式（本地 Whisper 或云端 API）"
     echo "  4. 准备 Python 环境"
@@ -45,6 +47,95 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "部署完成后，运行: bash start.sh"
     exit 0
 fi
+
+# ─────────────────────────────── 系统依赖自动安装辅助 ────────────────────────
+# 用法约定：
+#   - detect_pkg_manager     根据 OS_TYPE 探测出当前可用的包管理器名（brew/apt/...）
+#   - install_homebrew       macOS 上没装 brew 时调用，装完后把 brew 放进当前 PATH
+#   - map_pkg <mgr> <tool>   把通用工具名（python3/ffmpeg/git/curl）翻译成实际包名
+#   - auto_install_pkgs      接收一组缺失工具，统一调用包管理器一次性安装
+
+detect_pkg_manager() {
+    if [[ "${OS_TYPE:-}" == "macos" ]]; then
+        if command -v brew &>/dev/null; then echo "brew"; else echo "none"; fi
+    elif [[ "${OS_TYPE:-}" == "linux" ]]; then
+        if   command -v apt-get &>/dev/null; then echo "apt"
+        elif command -v dnf     &>/dev/null; then echo "dnf"
+        elif command -v yum     &>/dev/null; then echo "yum"
+        elif command -v pacman  &>/dev/null; then echo "pacman"
+        elif command -v zypper  &>/dev/null; then echo "zypper"
+        else echo "none"
+        fi
+    else
+        echo "none"
+    fi
+}
+
+install_homebrew() {
+    info "未检测到 Homebrew，将自动安装（过程中可能要求输入 sudo 密码）..."
+    if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+        error "Homebrew 安装失败"
+        return 1
+    fi
+    # 加载 brew 到当前 PATH（Apple Silicon 在 /opt/homebrew，Intel 在 /usr/local）
+    if   [[ -x /opt/homebrew/bin/brew ]]; then eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -x /usr/local/bin/brew  ]]; then eval "$(/usr/local/bin/brew shellenv)"
+    fi
+    command -v brew &>/dev/null
+}
+
+# 把通用工具名映射为当前包管理器下的实际包名（一行可能含空格分隔的多个包名）
+map_pkg() {
+    local mgr="$1" tool="$2"
+    case "$mgr:$tool" in
+        brew:python3)         echo "python@3.11" ;;
+        brew:*)               echo "$tool" ;;
+        apt:python3)          echo "python3 python3-venv python3-pip" ;;
+        apt:*)                echo "$tool" ;;
+        dnf:python3)          echo "python3 python3-pip" ;;
+        dnf:*)                echo "$tool" ;;
+        yum:python3)          echo "python3 python3-pip" ;;
+        yum:*)                echo "$tool" ;;
+        pacman:python3)       echo "python python-pip" ;;
+        pacman:*)             echo "$tool" ;;
+        zypper:python3)       echo "python311 python311-pip" ;;
+        zypper:*)             echo "$tool" ;;
+        *)                    echo "$tool" ;;
+    esac
+}
+
+# 用包管理器一次性安装一组工具；失败返回非零
+auto_install_pkgs() {
+    local mgr="$1"; shift
+    local tools=("$@")
+    local pkg_list=()
+    local tool parts
+    for tool in "${tools[@]}"; do
+        # shellcheck disable=SC2206
+        parts=( $(map_pkg "$mgr" "$tool") )
+        pkg_list+=("${parts[@]}")
+    done
+    [[ ${#pkg_list[@]} -eq 0 ]] && return 0
+
+    info "用 $mgr 安装: ${pkg_list[*]}"
+    case "$mgr" in
+        brew)
+            brew install "${pkg_list[@]}"
+            ;;
+        apt)
+            sudo apt-get update
+            sudo apt-get install -y "${pkg_list[@]}"
+            ;;
+        dnf)    sudo dnf    install -y "${pkg_list[@]}" ;;
+        yum)    sudo yum    install -y "${pkg_list[@]}" ;;
+        pacman) sudo pacman -S --noconfirm --needed "${pkg_list[@]}" ;;
+        zypper) sudo zypper install -y "${pkg_list[@]}" ;;
+        *)
+            error "不支持的包管理器: $mgr"
+            return 1
+            ;;
+    esac
+}
 
 # ─────────────────────────────── 欢迎界面 ────────────────────────────────────
 hr
@@ -69,86 +160,122 @@ case "$(uname -s)" in
 esac
 success "操作系统: $OS_TYPE"
 
-# 检测必备工具
+# 检测必备工具（单次复用：自动安装后会再调一次）
 MISSING_TOOLS=()
+detect_tools() {
+    MISSING_TOOLS=()
 
-# python3 >= 3.10
-if command -v python3 &>/dev/null; then
-    PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-    PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
-    PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
-    if [[ "$PY_MAJOR" -lt 3 || ("$PY_MAJOR" -eq 3 && "$PY_MINOR" -lt 10) ]]; then
-        error "python3 版本过低: ${PY_VER}（需要 >= 3.10）"
-        MISSING_TOOLS+=("python3>=3.10")
+    # python3 >= 3.10
+    if command -v python3 &>/dev/null; then
+        local py_ver py_major py_minor
+        py_ver=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        py_major=$(echo "$py_ver" | cut -d. -f1)
+        py_minor=$(echo "$py_ver" | cut -d. -f2)
+        if [[ "$py_major" -lt 3 || ("$py_major" -eq 3 && "$py_minor" -lt 10) ]]; then
+            warn "python3 版本过低: ${py_ver}（需要 >= 3.10）"
+            MISSING_TOOLS+=("python3")
+        else
+            success "python3: $py_ver"
+        fi
     else
-        success "python3: $PY_VER"
+        warn "未找到 python3"
+        MISSING_TOOLS+=("python3")
     fi
-else
-    error "未找到 python3"
-    MISSING_TOOLS+=("python3")
-fi
 
-# ffmpeg
-if command -v ffmpeg &>/dev/null; then
-    success "ffmpeg: $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
-else
-    warn "未找到 ffmpeg（音频处理必须）"
-    MISSING_TOOLS+=("ffmpeg")
-fi
+    # ffmpeg
+    if command -v ffmpeg &>/dev/null; then
+        success "ffmpeg: $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
+    else
+        warn "未找到 ffmpeg（音频处理必须）"
+        MISSING_TOOLS+=("ffmpeg")
+    fi
 
-# git
-if command -v git &>/dev/null; then
-    success "git: $(git --version | awk '{print $3}')"
-else
-    error "未找到 git"
-    MISSING_TOOLS+=("git")
-fi
+    # git
+    if command -v git &>/dev/null; then
+        success "git: $(git --version | awk '{print $3}')"
+    else
+        warn "未找到 git"
+        MISSING_TOOLS+=("git")
+    fi
 
-# curl
-if command -v curl &>/dev/null; then
-    success "curl: 已安装"
-else
-    error "未找到 curl"
-    MISSING_TOOLS+=("curl")
-fi
+    # curl
+    if command -v curl &>/dev/null; then
+        success "curl: 已安装"
+    else
+        warn "未找到 curl"
+        MISSING_TOOLS+=("curl")
+    fi
+}
 
-# uv（可选，推荐）
+detect_tools
+
+# uv（可选，推荐；不进入自动安装流程，缺失时只回落到 venv）
 HAS_UV=false
 if command -v uv &>/dev/null; then
     success "uv: $(uv --version)"
     HAS_UV=true
 else
-    warn "未找到 uv（推荐安装，将使用 python3 -m venv 作为备选）"
+    warn "未找到 uv（推荐但非必需，将回落到 python3 -m venv）"
 fi
 
-# 如果有致命缺失工具，打印修复建议后退出
+# ─── 自动安装缺失依赖 ─────────────────────────────────────────────────────────
 if [[ ${#MISSING_TOOLS[@]} -gt 0 ]]; then
     echo ""
-    error "缺少必备工具: ${MISSING_TOOLS[*]}"
-    echo ""
-    bold "修复建议："
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        echo "  # 安装 Homebrew（如未安装）:"
-        echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    warn "检测到缺失依赖: ${MISSING_TOOLS[*]}"
+
+    PKG_MGR="$(detect_pkg_manager)"
+
+    # macOS 无 brew 时先装 brew
+    if [[ "$OS_TYPE" == "macos" && "$PKG_MGR" == "none" ]]; then
         echo ""
-        echo "  # 安装缺失工具:"
-        [[ " ${MISSING_TOOLS[*]} " == *"ffmpeg"* ]]   && echo "  brew install ffmpeg"
-        [[ " ${MISSING_TOOLS[*]} " == *"git"* ]]       && echo "  brew install git"
-        [[ " ${MISSING_TOOLS[*]} " == *"curl"* ]]      && echo "  brew install curl"
-        [[ " ${MISSING_TOOLS[*]} " == *"python3"* ]]   && echo "  brew install python@3.11"
-    else
-        echo "  sudo apt-get update"
-        [[ " ${MISSING_TOOLS[*]} " == *"ffmpeg"* ]]   && echo "  sudo apt-get install -y ffmpeg"
-        [[ " ${MISSING_TOOLS[*]} " == *"git"* ]]       && echo "  sudo apt-get install -y git"
-        [[ " ${MISSING_TOOLS[*]} " == *"curl"* ]]      && echo "  sudo apt-get install -y curl"
-        [[ " ${MISSING_TOOLS[*]} " == *"python3"* ]]   && echo "  sudo apt-get install -y python3.11 python3.11-venv"
+        read -r -p "  macOS 上没有 Homebrew，是否自动安装 Homebrew？[Y/n，默认 Y]: " INSTALL_BREW
+        INSTALL_BREW="${INSTALL_BREW:-Y}"
+        if [[ "$INSTALL_BREW" =~ ^[Yy]$ ]]; then
+            if install_homebrew; then
+                PKG_MGR="brew"
+                success "Homebrew 已就绪"
+            else
+                error "Homebrew 安装失败"
+                exit 1
+            fi
+        else
+            warn "跳过 Homebrew 安装，无法自动安装系统依赖"
+        fi
     fi
-    # ffmpeg 不是致命错误（继续部署，运行时才会报错）
-    if [[ " ${MISSING_TOOLS[*]} " != *"ffmpeg"* ]]; then
-        echo ""
-        warn "（ffmpeg 缺失不阻止安装，但运行时音频处理会报错）"
-    else
+
+    if [[ "$PKG_MGR" == "none" ]]; then
+        error "未检测到可用的包管理器（macOS 需要 brew；Linux 需要 apt/dnf/yum/pacman/zypper 之一）"
+        bold "请手动安装以下依赖后重试: ${MISSING_TOOLS[*]}"
         exit 1
+    fi
+
+    echo ""
+    read -r -p "  使用 ${PKG_MGR} 自动安装这些依赖？[Y/n，默认 Y]: " AUTO_INSTALL
+    AUTO_INSTALL="${AUTO_INSTALL:-Y}"
+    if [[ "$AUTO_INSTALL" =~ ^[Yy]$ ]]; then
+        if auto_install_pkgs "$PKG_MGR" "${MISSING_TOOLS[@]}"; then
+            success "依赖安装完成，重新检测..."
+            echo ""
+            detect_tools
+            if [[ ${#MISSING_TOOLS[@]} -gt 0 ]]; then
+                error "以下依赖在自动安装后仍不可用: ${MISSING_TOOLS[*]}"
+                echo "  请手动检查上面的安装日志后重试。"
+                exit 1
+            fi
+            success "所有系统依赖均已就绪"
+        else
+            error "自动安装失败，请查看上面的输出排查原因"
+            exit 1
+        fi
+    else
+        warn "已跳过自动安装"
+        # 用户拒绝自动安装：只有「仅 ffmpeg 缺失」时允许继续（运行时才会出错）
+        if [[ ${#MISSING_TOOLS[@]} -eq 1 && "${MISSING_TOOLS[0]}" == "ffmpeg" ]]; then
+            warn "ffmpeg 缺失不阻止安装，但运行时音频处理会报错"
+        else
+            error "缺少关键依赖，无法继续: ${MISSING_TOOLS[*]}"
+            exit 1
+        fi
     fi
 fi
 

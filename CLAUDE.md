@@ -67,7 +67,7 @@ cd frontend && npm install && npm run dev
 模块化单体架构，Web 中枢按"api / domain / clients"三层分包，**api 不能直接调外部 HTTP，必须经 clients；api 也不写业务逻辑，必须经 domain**。
 
 ```
-emotionTTS_v4.5/
+emotionTTS_remake/
 ├── main.py                          # 启动器：端口检测 + uvicorn 同进程拉 webapp.app
 ├── pyrightconfig.json               # 指向 /Users/hans/repos/index-tts/.venv
 ├── CLAUDE.md / docs/PRD.md
