@@ -1,29 +1,27 @@
 /**
  * Business Logic:
  *   工作台视图，是用户合成配音的主界面，包含两种工作流：
- *   (1) 单句配音：三步引导（选声音→写台词→合成），合成后展示候选音卡片、重新生成、手动选参考音
- *   (2) 长文本配音：粘贴批量文本，智能拆分→逐句匹配→批量合成，支持单段操作/顺序播放/合并导出
+ *   (1) 单句配音：选声音→写台词→点「开始合成」（显式触发），展示候选音卡片、高级模式四维 override。
+ *   (2) 长文本配音：粘贴批量文本，智能拆分→逐句匹配→批量合成，支持单段操作/顺序播放/合并导出。
+ *   采用四维 override 模型：参考音 / 情绪 / 向量 / alpha 每项独立可锁定，null = AI 自动。
  *
  * Code Logic:
  *   通过 studioMode 状态切换两个子面板的展示。
- *   单句模式调用 useMatch + useSynthesize 真 hook，完成后展示候选音卡片池。
- *   长文本模式维护 segments 数组（LongTextSegment[]），依次调
- *   useLongTextSplit / useMatch / useSynthesize 完成全流程。
- *   高级模式通过 advancedOpen 状态控制 AdvancedSheet 弹出。
- *   顺序播放用 useSequentialPlay hook 管理。
- *   合并导出用 useMergeOutputs hook 管理。
+ *   单句模式维护 singleOverrides（四维 override）和 singleLlmCache（LLM 缓存）。
+ *   合成决策树：全 override → 跳过 LLM；llmCache 命中 → 跳过 LLM；否则调 runMatch。
+ *   长文本模式维护 segments 数组（LongTextSegment[]），每段有独立 overrides + llmCache。
+ *   高级模式通过 advancedOpen 状态控制 AdvancedSheet 弹出，保存时只更新 overrides 不触发合成。
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import './StudioView.css'
 import Icon from '../icons/Icon'
 import CastPickerSheet from '../components/CastPickerSheet'
-import AdvancedSheet, { DEFAULT_SETTINGS } from '../components/AdvancedSheet'
-import ReferencePickerSheet from '../components/ReferencePickerSheet'
+import AdvancedSheet from '../components/AdvancedSheet'
 import Avatar from '../components/Avatar'
-import type { AdvancedSettings } from '../components/AdvancedSheet'
-import type { Character, LibraryItem, EmotionVector } from '@/api/types'
-import type { LongTextSegment } from '../utils/longText'
+import type { Character, EmotionVector } from '@/api/types'
+import type { LongTextSegment, SegmentOverrides, SegmentLlmCache } from '../utils/longText'
+import { makeDefaultOverrides } from '../utils/longText'
 import { useMatch } from '@/hooks/useMatch'
 import { useSynthesize } from '@/hooks/useSynthesize'
 import { useLongTextSplit } from '@/hooks/useLongTextSplit'
@@ -119,28 +117,17 @@ export default function StudioView({
   const [script, setScript] = useState<string>('那时候我并不知道，原来一句轻飘飘的"再见"，会在多年之后还烫着我的舌尖。')
   const [castPickerOpen, setCastPickerOpen] = useState<boolean>(false)
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(false)
-  const [advSettings, setAdvSettings] = useState<AdvancedSettings>(DEFAULT_SETTINGS)
 
   // ── 单句模式状态 ──────────────────────────────────────────
-  const [matchResult, setMatchResult] = useState<{
-    target_emotion: { primary: string; intensity: string; complex?: string }
-    candidates: CandidateCard[]
-    emo_vector: EmotionVector | null
-    emo_alpha: number
-  } | null>(null)
+  /** 单句模式的四维 override */
+  const [singleOverrides, setSingleOverrides] = useState<SegmentOverrides>(makeDefaultOverrides())
+  /** 单句模式的 LLM 缓存（合成后才有） */
+  const [singleLlmCache, setSingleLlmCache] = useState<SegmentLlmCache | null>(null)
   const [synthDone, setSynthDone] = useState<boolean>(false)
   const [activeCandidateIdx, setActiveCandidateIdx] = useState<number>(0)
-  // 向量状态：null = AI 自动，有值 = 用户/AI 注入
-  const [singleEmoVector, setSingleEmoVector] = useState<EmotionVector | null>(null)
-  const [singleEmoAlpha, setSingleEmoAlpha] = useState<number>(0.65)
-  const [singleVectorActive, setSingleVectorActive] = useState<boolean>(false)
-  // 手动参考音：从 ReferencePickerSheet 选定后存此值
-  const [manualRefItem, setManualRefItem] = useState<LibraryItem | null>(null)
-  const [refPickerOpen, setRefPickerOpen] = useState<boolean>(false)
+
   // 用于单段高级 sheet 打开（长文本）
   const [segAdvancedId, setSegAdvancedId] = useState<number | null>(null)
-  // 长文本每段的参考音 picker
-  const [segRefPickerId, setSegRefPickerId] = useState<number | null>(null)
 
   // ── 长文本模式状态 ────────────────────────────────────────
   const [longText, setLongText] = useState<string>('')
@@ -168,169 +155,158 @@ export default function StudioView({
   const { playing: seqPlaying, currentSegId: seqCurrentId, play: seqPlay, stop: seqStop } = useSequentialPlay()
   const { run: runMerge, loading: mergeLoading } = useMergeOutputs()
 
-  // 加载角色素材库（用于手动选参考音）
+  // 加载角色素材库（用于参考音 picker）
   const { items: libraryItems } = useCharacterDetail(activeChar?.char_id ?? '')
 
   const isBusy = matchLoading || synthLoading
   const longBusy = splitting || matching || synthing
 
-  // ── 当 activeChar 变化时清空单句 matchResult / refItem ──────
+  // ── 当 activeChar 变化时清空单句状态 ────────────────────────
   useEffect(() => {
-    setMatchResult(null)
+    setSingleLlmCache(null)
     setSynthDone(false)
     setActiveCandidateIdx(0)
-    setManualRefItem(null)
-    setSingleEmoVector(null)
-    setSingleVectorActive(false)
+    setSingleOverrides(makeDefaultOverrides())
   }, [activeChar?.char_id])
 
   // ============================================================
-  // 单句模式
+  // 单句模式决策树
   // ============================================================
 
   /**
    * Business Logic:
-   *   单句模式核心流程：先 LLM 情绪匹配，再用指定候选（或手动选）TTS 合成，
-   *   最后通知 BottomPlayer。
+   *   单句模式核心合成流程，实现四维 override 决策树：
+   *   1. 若所有 override 都已设置 → 跳过 LLM，直接调 TTS。
+   *   2. 否则若 llmCache.text === 当前台词 → 跳过 LLM，用 llmCache 补 null 字段。
+   *   3. 否则调 runMatch → 写入 llmCache → 合并 override + LLM → 调 TTS。
    *
    * Code Logic:
-   *   依次调用 runMatch / runSynth，结果通过 onSynthesized 回传父组件。
-   *   若有 manualRefItem 强制用它，否则用 candidates[candidateIdx]。
-   *   若 singleVectorActive 则传向量，否则用 AI 返回向量。
+   *   candidateIdx 为可选参数，用于切换候选音时指定使用哪条候选。
+   *   最终传给 runSynth 的参数由 override 覆盖 llmCache 决策得出。
    */
   const handleSynth = useCallback(async (candidateIdx?: number) => {
     if (!activeChar || !script.trim()) return
     const idx = candidateIdx ?? activeCandidateIdx
 
-    const result = await runMatch({
-      char_id: activeChar.char_id,
-      text: script,
-      lock: advSettings.lockPrimary
-        ? {
-            primary: advSettings.lockPrimary,
-            intensity: advSettings.lockIntensity,
-            complex: advSettings.lockComplex || undefined,
-          }
-        : undefined,
-    })
-    // 注入向量
-    const newVector = result.emo_vector
-    setSingleEmoVector(newVector)
-    setSingleEmoAlpha(result.emo_alpha)
-    setSingleVectorActive(!!newVector)
-    setMatchResult({
-      target_emotion: result.target_emotion,
-      candidates: result.candidates.map((c) => ({
-        id: c.id,
-        text: c.text,
-        filename: c.filename,
-        ref_audio_url: c.ref_audio_url,
-        reason: c.reason,
-        emotion: c.emotion,
-      })),
-      emo_vector: result.emo_vector,
-      emo_alpha: result.emo_alpha,
-    })
-    setActiveCandidateIdx(idx)
+    let cache = singleLlmCache
+    const allOverrideSet =
+      singleOverrides.ref !== null &&
+      singleOverrides.emotion !== null &&
+      singleOverrides.vector !== null &&
+      singleOverrides.alpha !== null
 
-    const refFilename = manualRefItem?.filename ?? result.candidates[idx]?.filename
-    if (!refFilename) return
+    // 决策树：是否需要调 LLM
+    if (!allOverrideSet) {
+      const cacheHit = cache !== null && cache.text === script
+      if (!cacheHit) {
+        // 调 LLM 匹配
+        const result = await runMatch({
+          char_id: activeChar.char_id,
+          text: script,
+          lock: singleOverrides.emotion
+            ? {
+                primary: singleOverrides.emotion.primary,
+                intensity: singleOverrides.emotion.intensity,
+                complex: singleOverrides.emotion.complex,
+              }
+            : undefined,
+        })
+        const newCache: SegmentLlmCache = {
+          text: script,
+          ref_audio_filename: result.candidates[0]?.filename ?? '',
+          ref_audio_url: result.candidates[0]?.ref_audio_url ?? '',
+          target_emotion: result.target_emotion,
+          emo_vector: result.emo_vector,
+          emo_alpha: result.emo_alpha,
+          candidates: result.candidates.map((c) => ({
+            id: c.id,
+            text: c.text,
+            filename: c.filename,
+            ref_audio_url: c.ref_audio_url,
+            reason: c.reason,
+            emotion: c.emotion,
+          })),
+        }
+        setSingleLlmCache(newCache)
+        cache = newCache
+      }
+    }
 
-    const vector = singleVectorActive ? singleEmoVector : result.emo_vector
-    const alpha = singleVectorActive ? singleEmoAlpha : result.emo_alpha
+    if (!cache && !allOverrideSet) return
+
+    // 合并 override + llmCache 得出最终参数
+    const finalRefFilename =
+      singleOverrides.ref?.filename ??
+      (cache?.candidates?.[idx]?.filename ?? cache?.ref_audio_filename) ??
+      ''
+    const finalVector: EmotionVector | null =
+      singleOverrides.vector ?? cache?.emo_vector ?? null
+    const finalAlpha: number =
+      singleOverrides.alpha ?? cache?.emo_alpha ?? 0.65
+    const finalEmotion = singleOverrides.emotion ?? cache?.target_emotion
+
+    if (!finalRefFilename) return
 
     const { audio_url } = await runSynth({
       char_id: activeChar.char_id,
-      ref_audio_filename: refFilename,
+      ref_audio_filename: finalRefFilename,
       text: script,
-      emo_vector: vector,
-      emo_alpha: alpha,
+      emo_vector: finalVector,
+      emo_alpha: finalAlpha,
     })
     setSynthDone(true)
+    setActiveCandidateIdx(idx)
     onSynthesized(
       audio_url,
       script.length > 30 ? script.slice(0, 30) + '…' : script,
-      `${activeChar.name} · ${result.target_emotion.primary} · α ${result.emo_alpha.toFixed(2)}`
+      `${activeChar.name} · ${finalEmotion?.primary ?? '?'} · α ${finalAlpha.toFixed(2)}`
     )
-  }, [activeChar, script, advSettings, activeCandidateIdx, manualRefItem, singleVectorActive, singleEmoVector, singleEmoAlpha, runMatch, runSynth, onSynthesized])
+  }, [
+    activeChar, script, activeCandidateIdx,
+    singleOverrides, singleLlmCache,
+    runMatch, runSynth, onSynthesized,
+  ])
 
   /**
    * Business Logic:
    *   用户点击候选卡片的「使用此条」按钮，换用不同候选音重新合成。
    *
    * Code Logic:
-   *   先把 matchResult 里该候选的 filename 传给 runSynth，更新播放器。
+   *   llmCache 已有，直接用指定 candidateIdx 重新合成（不重跑 match）。
    */
   const handleUseCandidateAtIdx = useCallback(async (idx: number) => {
-    if (!activeChar || !script.trim() || !matchResult) return
-    const cand = matchResult.candidates[idx]
+    if (!activeChar || !script.trim() || !singleLlmCache) return
+    const cand = singleLlmCache.candidates?.[idx]
     if (!cand) return
     setActiveCandidateIdx(idx)
 
-    const vector = singleVectorActive ? singleEmoVector : matchResult.emo_vector
-    const alpha = singleVectorActive ? singleEmoAlpha : matchResult.emo_alpha
+    const finalVector: EmotionVector | null = singleOverrides.vector ?? singleLlmCache.emo_vector ?? null
+    const finalAlpha: number = singleOverrides.alpha ?? singleLlmCache.emo_alpha ?? 0.65
 
     const { audio_url } = await runSynth({
       char_id: activeChar.char_id,
       ref_audio_filename: cand.filename,
       text: script,
-      emo_vector: vector,
-      emo_alpha: alpha,
+      emo_vector: finalVector,
+      emo_alpha: finalAlpha,
     })
     onSynthesized(
       audio_url,
       script.length > 30 ? script.slice(0, 30) + '…' : script,
-      `${activeChar.name} · ${matchResult.target_emotion.primary} · 候选 ${idx + 1}`
+      `${activeChar.name} · ${singleLlmCache.target_emotion.primary} · 候选 ${idx + 1}`
     )
-  }, [activeChar, script, matchResult, singleVectorActive, singleEmoVector, singleEmoAlpha, runSynth, onSynthesized])
+  }, [activeChar, script, singleLlmCache, singleOverrides, runSynth, onSynthesized])
 
   /**
    * Business Logic:
-   *   高级模式应用后立即重新合成，让参数调整立即生效。
+   *   高级模式"保存"回调：只更新 singleOverrides，不触发合成。
    *
    * Code Logic:
-   *   先更新 advSettings，再调 handleSynth。
+   *   setSingleOverrides 写入新值，advancedOpen 由 AdvancedSheet onClose 关闭。
    */
-  const handleAdvancedApply = useCallback(
-    async (settings: AdvancedSettings) => {
-      setAdvSettings(settings)
-      setAdvancedOpen(false)
-      // 若用户在高级模式中设置了向量，注入到单句状态
-      setSingleEmoVector(settings.emoVector)
-      setSingleEmoAlpha(settings.emoAlpha)
-      setSingleVectorActive(true)
-      await handleSynth()
-    },
-    [handleSynth]
-  )
-
-  /**
-   * Business Logic:
-   *   用户选完参考音后，用该 ref 重新合成（不重跑 match）。
-   *
-   * Code Logic:
-   *   更新 manualRefItem，用当前 matchResult 里的向量直接合成。
-   */
-  const handleRefPickerSelect = useCallback(async (item: LibraryItem) => {
-    setRefPickerOpen(false)
-    setManualRefItem(item)
-    if (!activeChar || !script.trim()) return
-    const vector = singleVectorActive ? singleEmoVector : matchResult?.emo_vector ?? null
-    const alpha = singleVectorActive ? singleEmoAlpha : matchResult?.emo_alpha ?? 0.65
-    const { audio_url } = await runSynth({
-      char_id: activeChar.char_id,
-      ref_audio_filename: item.filename,
-      text: script,
-      emo_vector: vector,
-      emo_alpha: alpha,
-    })
-    setSynthDone(true)
-    onSynthesized(
-      audio_url,
-      script.length > 30 ? script.slice(0, 30) + '…' : script,
-      `${activeChar.name} · 手动参考音 · ${item.emotion_primary}`
-    )
-  }, [activeChar, script, matchResult, singleVectorActive, singleEmoVector, singleEmoAlpha, runSynth, onSynthesized])
+  const handleSingleAdvancedSave = useCallback((newOverrides: SegmentOverrides) => {
+    setSingleOverrides(newOverrides)
+  }, [])
 
   // ============================================================
   // 长文本 helpers
@@ -369,7 +345,7 @@ export default function StudioView({
    *
    * Code Logic:
    *   调 useLongTextSplit().split()，把返回的 string[] 转为 LongTextSegment[]，
-   *   每条默认 selected=true、status='unmatched'。
+   *   每条默认 selected=true、status='unmatched'、overrides 全 null、llmCache=null。
    */
   const handleSplit = useCallback(async () => {
     if (!longText.trim() || splitting) return
@@ -381,6 +357,8 @@ export default function StudioView({
         text,
         selected: true,
         status: 'unmatched',
+        overrides: makeDefaultOverrides(),
+        llmCache: null,
       }))
       setSegments(newSegs)
       setSegFilter('all')
@@ -393,13 +371,138 @@ export default function StudioView({
 
   /**
    * Business Logic:
-   *   对所有勾选段落串行调 LLM 情绪匹配，逐个回填 ref_audio_filename /
-   *   emo_vector / emo_alpha，完成后 status 变 'pending'。
-   *   全局 alpha 权重 longGlobalAlpha 作为 alpha 上限乘数。
+   *   对单段执行合成决策树（供批量和单段共用）。
+   *   1. 全 override 已设置 → 跳过 LLM 直接 TTS。
+   *   2. llmCache 命中（text 相同） → 跳过 LLM。
+   *   3. 否则调 runMatch → 写 llmCache → 合并 → TTS。
    *
    * Code Logic:
-   *   依次 await runMatch，每次拿 candidates[0].filename 和 emo 字段写回对应 segment。
-   *   finalAlpha = backendAlpha * globalWeight（对齐旧版逻辑）。
+   *   返回合成后的 audio_url；失败抛出异常供调用方处理。
+   *   longGlobalAlpha 作用于 alpha fallback（即 override.alpha === null 时）。
+   */
+  const synthOneSegment = useCallback(async (
+    seg: LongTextSegment,
+    globalAlpha: number,
+  ): Promise<{ audio_url: string; finalRef: string; finalEmotion: { primary: string; intensity: string; complex?: string } | undefined; finalVector: EmotionVector | null; finalAlpha: number; newCache: SegmentLlmCache | null }> => {
+    if (!activeChar) throw new Error('no activeChar')
+
+    const { overrides } = seg
+    const allOverrideSet =
+      overrides.ref !== null &&
+      overrides.emotion !== null &&
+      overrides.vector !== null &&
+      overrides.alpha !== null
+
+    let cache = seg.llmCache
+    if (!allOverrideSet) {
+      const cacheHit = cache !== null && cache.text === seg.text
+      if (!cacheHit) {
+        const result = await runMatch({
+          char_id: activeChar.char_id,
+          text: seg.text,
+          lock: overrides.emotion
+            ? {
+                primary: overrides.emotion.primary,
+                intensity: overrides.emotion.intensity,
+                complex: overrides.emotion.complex,
+              }
+            : undefined,
+        })
+        cache = {
+          text: seg.text,
+          ref_audio_filename: result.candidates[0]?.filename ?? '',
+          ref_audio_url: result.candidates[0]?.ref_audio_url ?? '',
+          target_emotion: result.target_emotion,
+          emo_vector: result.emo_vector,
+          emo_alpha: result.emo_alpha,
+        }
+      }
+    }
+
+    const finalRef = overrides.ref?.filename ?? cache?.ref_audio_filename ?? ''
+    if (!finalRef) throw new Error('no ref audio')
+
+    const finalVector: EmotionVector | null = overrides.vector ?? cache?.emo_vector ?? null
+    // alpha：override 优先，否则 llmCache * globalAlpha
+    const backendAlpha = cache?.emo_alpha ?? 0.65
+    const finalAlpha: number =
+      overrides.alpha !== null
+        ? overrides.alpha
+        : parseFloat((backendAlpha * globalAlpha).toFixed(2))
+    const finalEmotion = overrides.emotion ?? cache?.target_emotion
+
+    const { audio_url } = await runSynth({
+      char_id: activeChar.char_id,
+      ref_audio_filename: finalRef,
+      text: seg.text,
+      emo_vector: finalVector,
+      emo_alpha: finalAlpha,
+    })
+
+    return {
+      audio_url,
+      finalRef,
+      finalEmotion,
+      finalVector,
+      finalAlpha,
+      newCache: cache,
+    }
+  }, [activeChar, runMatch, runSynth])
+
+  /**
+   * Business Logic:
+   *   对所有勾选段落串行执行合成决策树，每段独立判定缓存命中。
+   *
+   * Code Logic:
+   *   依次调 synthOneSegment，写回 llmCache 和最终合成参数，status→'done'。
+   */
+  const handleBatchSynth = useCallback(async () => {
+    if (!activeChar || synthing) return
+    const targets = getVisibleSegments(segments, segFilter).filter((s) => s.selected)
+    if (targets.length === 0) return
+    setSynthing(true)
+    const controller = new AbortController()
+    synthAbortRef.current = controller
+    for (const seg of targets) {
+      if (controller.signal.aborted) break
+      try {
+        const result = await synthOneSegment(seg, longGlobalAlpha)
+        if (controller.signal.aborted) break
+        setSegments((prev) =>
+          prev.map((s) =>
+            s.id === seg.id
+              ? {
+                  ...s,
+                  status: 'done',
+                  audio_url: result.audio_url,
+                  auditioned: false,
+                  llmCache: result.newCache ?? s.llmCache,
+                  ref_audio_filename: result.finalRef,
+                  ref_audio_url: result.newCache?.ref_audio_url ?? s.ref_audio_url,
+                  target_emotion: result.finalEmotion,
+                  emo_vector: result.finalVector,
+                  emo_alpha: result.finalAlpha,
+                }
+              : s
+          )
+        )
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') break
+        setSegments((prev) =>
+          prev.map((s) => (s.id === seg.id ? { ...s, status: 'error' } : s))
+        )
+      }
+    }
+    synthAbortRef.current = null
+    setSynthing(false)
+  }, [activeChar, synthing, segments, segFilter, synthOneSegment, longGlobalAlpha])
+
+  /**
+   * Business Logic:
+   *   批量匹配（只做 LLM 匹配，不合成）——仅对已勾选且未有 llmCache 的段落。
+   *
+   * Code Logic:
+   *   依次 await runMatch，写 llmCache，status→'pending'。
    */
   const handleBatchMatch = useCallback(async () => {
     if (!activeChar || matching) return
@@ -411,21 +514,32 @@ export default function StudioView({
         const result = await runMatch({
           char_id: activeChar.char_id,
           text: seg.text,
+          lock: seg.overrides.emotion
+            ? {
+                primary: seg.overrides.emotion.primary,
+                intensity: seg.overrides.emotion.intensity,
+                complex: seg.overrides.emotion.complex,
+              }
+            : undefined,
         })
-        const best = result.candidates[0]
-        const backendAlpha = result.emo_alpha ?? 0.65
-        const finalAlpha = parseFloat((backendAlpha * longGlobalAlpha).toFixed(2))
+        const newCache: SegmentLlmCache = {
+          text: seg.text,
+          ref_audio_filename: result.candidates[0]?.filename ?? '',
+          ref_audio_url: result.candidates[0]?.ref_audio_url ?? '',
+          target_emotion: result.target_emotion,
+          emo_vector: result.emo_vector,
+          emo_alpha: result.emo_alpha,
+        }
         setSegments((prev) =>
           prev.map((s) =>
             s.id === seg.id
               ? {
                   ...s,
                   status: 'pending',
-                  ref_audio_filename: best?.filename,
-                  ref_audio_url: best?.ref_audio_url,
-                  emo_vector: result.emo_vector,
-                  emo_alpha: finalAlpha,
-                  target_emotion: result.target_emotion,
+                  llmCache: newCache,
+                  ref_audio_filename: seg.overrides.ref?.filename ?? newCache.ref_audio_filename,
+                  ref_audio_url: seg.overrides.ref?.audio_url ?? newCache.ref_audio_url,
+                  target_emotion: seg.overrides.emotion ?? newCache.target_emotion,
                 }
               : s
           )
@@ -437,60 +551,14 @@ export default function StudioView({
       }
     }
     setMatching(false)
-  }, [activeChar, matching, segments, segFilter, runMatch, longGlobalAlpha])
-
-  /**
-   * Business Logic:
-   *   对所有勾选且 status==='pending' 的段落串行调合成，支持 abort 停止。
-   *
-   * Code Logic:
-   *   依次 await runSynth，传 AbortController.signal，
-   *   每次把 audio_url 写回对应 segment；收到 abort 时立即跳出循环。
-   */
-  const handleBatchSynth = useCallback(async () => {
-    if (!activeChar || synthing) return
-    const targets = segments.filter((s) => s.selected && s.status === 'pending')
-    if (targets.length === 0) return
-    setSynthing(true)
-    const controller = new AbortController()
-    synthAbortRef.current = controller
-    for (const seg of targets) {
-      if (controller.signal.aborted) break
-      if (!seg.ref_audio_filename) {
-        setSegments((prev) =>
-          prev.map((s) => (s.id === seg.id ? { ...s, status: 'error' } : s))
-        )
-        continue
-      }
-      try {
-        const { audio_url } = await runSynth({
-          char_id: activeChar.char_id,
-          ref_audio_filename: seg.ref_audio_filename,
-          text: seg.text,
-          emo_vector: seg.emo_vector,
-          emo_alpha: seg.emo_alpha,
-        })
-        if (controller.signal.aborted) break
-        setSegments((prev) =>
-          prev.map((s) => (s.id === seg.id ? { ...s, status: 'done', audio_url } : s))
-        )
-      } catch (e) {
-        if (e instanceof Error && e.name === 'AbortError') break
-        setSegments((prev) =>
-          prev.map((s) => (s.id === seg.id ? { ...s, status: 'error' } : s))
-        )
-      }
-    }
-    synthAbortRef.current = null
-    setSynthing(false)
-  }, [activeChar, synthing, segments, runSynth])
+  }, [activeChar, matching, segments, segFilter, runMatch])
 
   /**
    * Business Logic:
    *   停止正在进行的批量合成。
    *
    * Code Logic:
-   *   abort 当前 AbortController，setSynthing(false)。
+   *   abort 当前 AbortController。
    */
   const handleStopSynth = useCallback(() => {
     if (synthAbortRef.current) {
@@ -500,10 +568,10 @@ export default function StudioView({
 
   /**
    * Business Logic:
-   *   单段重新匹配——不触及其他段，只更新该段的 ref 和向量。
+   *   单段重新匹配（只做 LLM，不合成）。
    *
    * Code Logic:
-   *   await runMatch，写回对应 segment，finalAlpha 同批量逻辑。
+   *   await runMatch，写 llmCache，status→'pending'。
    */
   const handleSegMatch = useCallback(async (segId: number) => {
     if (!activeChar) return
@@ -513,21 +581,32 @@ export default function StudioView({
       const result = await runMatch({
         char_id: activeChar.char_id,
         text: seg.text,
+        lock: seg.overrides.emotion
+          ? {
+              primary: seg.overrides.emotion.primary,
+              intensity: seg.overrides.emotion.intensity,
+              complex: seg.overrides.emotion.complex,
+            }
+          : undefined,
       })
-      const best = result.candidates[0]
-      const backendAlpha = result.emo_alpha ?? 0.65
-      const finalAlpha = parseFloat((backendAlpha * longGlobalAlpha).toFixed(2))
+      const newCache: SegmentLlmCache = {
+        text: seg.text,
+        ref_audio_filename: result.candidates[0]?.filename ?? '',
+        ref_audio_url: result.candidates[0]?.ref_audio_url ?? '',
+        target_emotion: result.target_emotion,
+        emo_vector: result.emo_vector,
+        emo_alpha: result.emo_alpha,
+      }
       setSegments((prev) =>
         prev.map((s) =>
           s.id === segId
             ? {
                 ...s,
                 status: 'pending',
-                ref_audio_filename: best?.filename,
-                ref_audio_url: best?.ref_audio_url,
-                emo_vector: result.emo_vector,
-                emo_alpha: finalAlpha,
-                target_emotion: result.target_emotion,
+                llmCache: newCache,
+                ref_audio_filename: s.overrides.ref?.filename ?? newCache.ref_audio_filename,
+                ref_audio_url: s.overrides.ref?.audio_url ?? newCache.ref_audio_url,
+                target_emotion: s.overrides.emotion ?? newCache.target_emotion,
               }
             : s
         )
@@ -537,36 +616,45 @@ export default function StudioView({
         prev.map((s) => (s.id === segId ? { ...s, status: 'error' } : s))
       )
     }
-  }, [activeChar, segments, runMatch, longGlobalAlpha])
+  }, [activeChar, segments, runMatch])
 
   /**
    * Business Logic:
-   *   单段重新合成。
+   *   单段重新合成（走决策树）。
    *
    * Code Logic:
-   *   await runSynth，写回 audio_url，status→'done'。
+   *   调 synthOneSegment，写回 audio_url 和缓存，status→'done'。
    */
   const handleSegSynth = useCallback(async (segId: number) => {
     if (!activeChar) return
     const seg = segments.find((s) => s.id === segId)
-    if (!seg?.ref_audio_filename) return
+    if (!seg) return
     try {
-      const { audio_url } = await runSynth({
-        char_id: activeChar.char_id,
-        ref_audio_filename: seg.ref_audio_filename,
-        text: seg.text,
-        emo_vector: seg.emo_vector,
-        emo_alpha: seg.emo_alpha,
-      })
+      const result = await synthOneSegment(seg, longGlobalAlpha)
       setSegments((prev) =>
-        prev.map((s) => (s.id === segId ? { ...s, status: 'done', audio_url, auditioned: false } : s))
+        prev.map((s) =>
+          s.id === segId
+            ? {
+                ...s,
+                status: 'done',
+                audio_url: result.audio_url,
+                auditioned: false,
+                llmCache: result.newCache ?? s.llmCache,
+                ref_audio_filename: result.finalRef,
+                ref_audio_url: result.newCache?.ref_audio_url ?? s.ref_audio_url,
+                target_emotion: result.finalEmotion,
+                emo_vector: result.finalVector,
+                emo_alpha: result.finalAlpha,
+              }
+            : s
+        )
       )
     } catch {
       setSegments((prev) =>
         prev.map((s) => (s.id === segId ? { ...s, status: 'error' } : s))
       )
     }
-  }, [activeChar, segments, runSynth])
+  }, [activeChar, segments, synthOneSegment, longGlobalAlpha])
 
   /**
    * Business Logic:
@@ -594,69 +682,16 @@ export default function StudioView({
 
   /**
    * Business Logic:
-   *   长文本中替换某段参考音（从 ReferencePickerSheet 选定后）。
+   *   长文本中，某段从高级 sheet 保存 overrides 后更新该段 overrides。
    *
    * Code Logic:
-   *   更新 ref_audio_filename 和 ref_audio_url，status→'pending'，触发自动合成。
+   *   只更新对应段的 overrides，不触发合成。
    */
-  const handleSegRefSelect = useCallback(async (item: LibraryItem) => {
-    const segId = segRefPickerId
-    setSegRefPickerId(null)
-    if (!segId || !activeChar) return
+  const handleSegAdvancedSave = useCallback((segId: number, newOverrides: SegmentOverrides) => {
     setSegments((prev) =>
-      prev.map((s) =>
-        s.id === segId
-          ? {
-              ...s,
-              ref_audio_filename: item.filename,
-              ref_audio_url: item.audio_url,
-              status: 'pending',
-            }
-          : s
-      )
+      prev.map((s) => (s.id === segId ? { ...s, overrides: newOverrides } : s))
     )
-    // 自动触发合成
-    const seg = segments.find((s) => s.id === segId)
-    if (!seg) return
-    try {
-      const { audio_url } = await runSynth({
-        char_id: activeChar.char_id,
-        ref_audio_filename: item.filename,
-        text: seg.text,
-        emo_vector: seg.emo_vector,
-        emo_alpha: seg.emo_alpha,
-      })
-      setSegments((prev) =>
-        prev.map((s) => (s.id === segId ? { ...s, status: 'done', audio_url, auditioned: false } : s))
-      )
-    } catch {
-      setSegments((prev) =>
-        prev.map((s) => (s.id === segId ? { ...s, status: 'error' } : s))
-      )
-    }
-  }, [segRefPickerId, activeChar, segments, runSynth])
-
-  /**
-   * Business Logic:
-   *   长文本模式单段高级 sheet 应用，针对指定 segment 更新向量后自动合成。
-   *
-   * Code Logic:
-   *   从 settings 中取出向量值，写回对应 segment，然后调 handleSegSynth。
-   */
-  const handleSegAdvancedApply = useCallback(async (settings: AdvancedSettings) => {
-    const segId = segAdvancedId
-    setSegAdvancedId(null)
-    if (!segId) return
-    setSegments((prev) =>
-      prev.map((s) =>
-        s.id === segId
-          ? { ...s, emo_vector: settings.emoVector, emo_alpha: settings.emoAlpha }
-          : s
-      )
-    )
-    // 合成
-    await handleSegSynth(segId)
-  }, [segAdvancedId, handleSegSynth])
+  }, [])
 
   /**
    * Business Logic:
@@ -732,16 +767,18 @@ export default function StudioView({
   const visibleSelectedCount = visibleSegments.filter((s) => s.selected).length
   const visibleCount = visibleSegments.length
 
-  // ── 当段高级 sheet 相关 ──────────────────────────────────
-  const segAdvancedInitial: AdvancedSettings = (() => {
-    const seg = segments.find((s) => s.id === segAdvancedId)
-    if (!seg) return DEFAULT_SETTINGS
-    return {
-      ...DEFAULT_SETTINGS,
-      emoVector: (seg.emo_vector as [number, number, number, number, number, number, number, number] | undefined) ?? DEFAULT_SETTINGS.emoVector,
-      emoAlpha: seg.emo_alpha ?? DEFAULT_SETTINGS.emoAlpha,
-    }
-  })()
+  // ── 当前打开高级 sheet 的段 ──────────────────────────────
+  const segAdvancedSeg = segments.find((s) => s.id === segAdvancedId) ?? null
+
+  // ── 单句 LLM cache 候选音列表（用于展示候选卡片） ──────────
+  const singleCandidates: CandidateCard[] = singleLlmCache?.candidates?.map((c) => ({
+    id: c.id,
+    text: c.text,
+    filename: c.filename,
+    ref_audio_url: c.ref_audio_url,
+    reason: c.reason,
+    emotion: c.emotion,
+  })) ?? []
 
   return (
     <div>
@@ -849,7 +886,7 @@ export default function StudioView({
             <div className="step-head">
               <div className="step-num">3</div>
               <div className="step-title">让它响起来</div>
-              <div className="step-hint">AI 会自动诊断情绪并挑选最合适的参考音</div>
+              <div className="step-hint">点「开始合成」触发，高级模式可锁定各参数</div>
             </div>
             <div className="action-zone">
               <div className="action-row">
@@ -874,7 +911,7 @@ export default function StudioView({
                 )}
               </div>
 
-              {/* 工具行：高级模式 + 向量状态 + 手动选参考音 */}
+              {/* 工具行：高级模式 + override 状态指示 */}
               <div className="action-tools">
                 <button
                   className="advanced-link"
@@ -883,70 +920,96 @@ export default function StudioView({
                   高级模式 · 手动情绪 / 参考音 / 向量微调
                 </button>
 
-                {singleVectorActive && (
-                  <span className="vector-chip is-active">
-                    <Icon name="sliders" size={12} />
-                    向量控制已启用
+                {/* override 状态提示 chips */}
+                {singleOverrides.ref && (
+                  <span className="override-chip">
+                    <Icon name="library" size={12} />
+                    参考音已锁定
                     <button
                       className="vector-chip__cancel"
-                      title="取消向量，回归 AI 自动"
-                      onClick={() => {
-                        setSingleVectorActive(false)
-                        setSingleEmoVector(null)
-                      }}
+                      title="重置参考音"
+                      onClick={() => setSingleOverrides((p) => ({ ...p, ref: null }))}
                     >
                       <Icon name="cancel" size={12} />
                     </button>
                   </span>
                 )}
-
-                <button
-                  className="btn-chip btn-chip--sm"
-                  onClick={() => setRefPickerOpen(true)}
-                  disabled={!activeChar}
-                  title="手动指定参考音片段"
-                >
-                  <Icon name="library" size={13} />
-                  {manualRefItem ? `参考音：${manualRefItem.emotion_primary}` : '手动选参考音'}
-                  {manualRefItem && (
-                    <span
-                      className="chip-cancel"
-                      onClick={(e) => { e.stopPropagation(); setManualRefItem(null) }}
+                {singleOverrides.emotion && (
+                  <span className="override-chip">
+                    情绪锁定：{singleOverrides.emotion.primary}
+                    <button
+                      className="vector-chip__cancel"
+                      title="重置情绪"
+                      onClick={() => setSingleOverrides((p) => ({ ...p, emotion: null }))}
                     >
-                      <Icon name="close" size={10} />
-                    </span>
-                  )}
-                </button>
+                      <Icon name="cancel" size={12} />
+                    </button>
+                  </span>
+                )}
+                {singleOverrides.vector && (
+                  <span className="override-chip">
+                    <Icon name="sliders" size={12} />
+                    向量已锁定
+                    <button
+                      className="vector-chip__cancel"
+                      title="重置向量"
+                      onClick={() => setSingleOverrides((p) => ({ ...p, vector: null }))}
+                    >
+                      <Icon name="cancel" size={12} />
+                    </button>
+                  </span>
+                )}
+                {singleOverrides.alpha !== null && (
+                  <span className="override-chip">
+                    α = {singleOverrides.alpha.toFixed(2)} 已锁定
+                    <button
+                      className="vector-chip__cancel"
+                      title="重置 Alpha"
+                      onClick={() => setSingleOverrides((p) => ({ ...p, alpha: null }))}
+                    >
+                      <Icon name="cancel" size={12} />
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Diagnosis preview */}
-            {matchResult && (
+            {/* Diagnosis preview（来自 llmCache） */}
+            {singleLlmCache && (
               <div className="diag-preview">
                 <div className="diag-icon">
                   <Icon name="ai" size={16} />
                 </div>
                 <div className="diag-text">
-                  <div className="diag-label">情绪诊断</div>
+                  <div className="diag-label">AI 情绪诊断</div>
                   <div className="diag-body">
-                    主情绪：<strong>{matchResult.target_emotion.primary}</strong>
-                    {matchResult.target_emotion.complex && `（${matchResult.target_emotion.complex}）`}
+                    主情绪：<strong>{singleOverrides.emotion?.primary ?? singleLlmCache.target_emotion.primary}</strong>
+                    {(singleOverrides.emotion?.complex ?? singleLlmCache.target_emotion.complex) &&
+                      `（${singleOverrides.emotion?.complex ?? singleLlmCache.target_emotion.complex}）`
+                    }
                     &nbsp;·&nbsp;
-                    <strong className="mono">Alpha = {matchResult.emo_alpha.toFixed(2)}</strong>
+                    <strong className="mono">
+                      Alpha = {(singleOverrides.alpha ?? singleLlmCache.emo_alpha).toFixed(2)}
+                    </strong>
+                    {singleOverrides.ref && (
+                      <span style={{ marginLeft: 8, fontSize: '12px', color: 'var(--signal-warn)' }}>
+                        · 参考音已手动锁定
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 候选音卡片池 */}
-            {matchResult && matchResult.candidates.length > 0 && (
+            {/* 候选音卡片池（来自 llmCache） */}
+            {singleLlmCache && singleCandidates.length > 0 && (
               <div className="candidates-section">
                 <div className="candidates-label">
                   <Icon name="list" size={12} />
-                  候选参考音（共 {matchResult.candidates.length} 条）
+                  候选参考音（共 {singleCandidates.length} 条）
                 </div>
                 <div className="candidates-list">
-                  {matchResult.candidates.map((c, idx) => (
+                  {singleCandidates.map((c, idx) => (
                     <div
                       key={c.id}
                       className={`candidate-card${idx === activeCandidateIdx ? ' is-active' : ''}`}
@@ -1151,7 +1214,7 @@ export default function StudioView({
                   已选 <strong>{selectedCount}</strong> / {segments.length} 句
                 </label>
 
-                {/* 情绪起伏（全局 alpha 权重） */}
+                {/* 情绪起伏（全局 alpha 权重，仅 alpha override=null 时生效） */}
                 <div className="batch-alpha-group">
                   <label className="batch-alpha-label">情绪起伏</label>
                   <select
@@ -1213,11 +1276,7 @@ export default function StudioView({
                   <button
                     className="btn-chip"
                     onClick={handleBatchSynth}
-                    disabled={
-                      !activeChar ||
-                      matching ||
-                      segments.filter((s) => s.selected && s.status === 'pending').length === 0
-                    }
+                    disabled={!activeChar || matching || selectedCount === 0}
                   >
                     全部合成
                   </button>
@@ -1277,7 +1336,6 @@ export default function StudioView({
                   }}
                   onMatch={handleSegMatch}
                   onSynth={handleSegSynth}
-                  onRefPicker={(id) => setSegRefPickerId(id)}
                   onDelete={handleSegDelete}
                   onVectorEdit={(id) => setSegAdvancedId(id)}
                   onAuditioned={markAuditioned}
@@ -1301,35 +1359,26 @@ export default function StudioView({
       {/* 单句模式高级 sheet */}
       <AdvancedSheet
         open={advancedOpen && segAdvancedId === null}
-        initial={advSettings}
+        overrides={singleOverrides}
+        llmCache={singleLlmCache}
+        libraryItems={libraryItems}
         onClose={() => setAdvancedOpen(false)}
-        onApply={handleAdvancedApply}
+        onSave={handleSingleAdvancedSave}
       />
 
       {/* 单段高级 sheet（长文本） */}
       <AdvancedSheet
         open={segAdvancedId !== null}
-        initial={segAdvancedInitial}
+        overrides={segAdvancedSeg?.overrides ?? makeDefaultOverrides()}
+        llmCache={segAdvancedSeg?.llmCache ?? null}
+        libraryItems={libraryItems}
         onClose={() => setSegAdvancedId(null)}
-        onApply={handleSegAdvancedApply}
-      />
-
-      {/* 单句手动参考音 picker */}
-      <ReferencePickerSheet
-        open={refPickerOpen}
-        items={libraryItems}
-        selectedItemId={manualRefItem?.id ?? null}
-        onClose={() => setRefPickerOpen(false)}
-        onSelect={handleRefPickerSelect}
-      />
-
-      {/* 长文本单段参考音 picker */}
-      <ReferencePickerSheet
-        open={segRefPickerId !== null}
-        items={libraryItems}
-        selectedItemId={null}
-        onClose={() => setSegRefPickerId(null)}
-        onSelect={handleSegRefSelect}
+        onSave={(newOverrides) => {
+          if (segAdvancedId !== null) {
+            handleSegAdvancedSave(segAdvancedId, newOverrides)
+          }
+          setSegAdvancedId(null)
+        }}
       />
     </div>
   )
@@ -1349,7 +1398,7 @@ export default function StudioView({
 function getVisibleSegments(segments: LongTextSegment[], filter: SegFilter): LongTextSegment[] {
   switch (filter) {
     case 'all': return segments
-    case 'no_ref': return segments.filter((s) => !s.ref_audio_filename)
+    case 'no_ref': return segments.filter((s) => !s.ref_audio_filename && !s.overrides.ref)
     case 'no_audio': return segments.filter((s) => !s.audio_url)
     case 'no_audition': return segments.filter((s) => s.audio_url && !s.auditioned)
   }
@@ -1373,7 +1422,6 @@ interface SegmentItemProps {
   onEditBlur: (id: number, text: string) => void
   onMatch: (id: number) => void
   onSynth: (id: number) => void
-  onRefPicker: (id: number) => void
   onDelete: (id: number) => void
   onVectorEdit: (id: number) => void
   onAuditioned: (id: number) => void
@@ -1387,6 +1435,7 @@ interface SegmentItemProps {
  * Code Logic:
  *   hover 状态用 CSS :hover + .seg-actions visibility 控制。
  *   内联文本编辑：editingId === seg.id 时改 textarea，blur 回调保存。
+ *   override 状态用 seg.overrides 判断，显示相应徽章。
  */
 function SegmentItem({
   seg,
@@ -1400,13 +1449,25 @@ function SegmentItem({
   onEditBlur,
   onMatch,
   onSynth,
-  onRefPicker,
   onDelete,
   onVectorEdit,
   onAuditioned,
   onPlaySynth,
 }: SegmentItemProps) {
   const isEditing = editingId === seg.id
+  const hasOverride =
+    seg.overrides.ref !== null ||
+    seg.overrides.emotion !== null ||
+    seg.overrides.vector !== null ||
+    seg.overrides.alpha !== null
+
+  // 展示用情绪：override 优先，其次 llmCache，其次 target_emotion（旧数据兼容）
+  const displayEmotion =
+    seg.overrides.emotion ?? seg.llmCache?.target_emotion ?? seg.target_emotion
+
+  // 展示用 ref_audio_url（用于试听参考音）
+  const displayRefUrl =
+    seg.overrides.ref?.audio_url ?? seg.llmCache?.ref_audio_url ?? seg.ref_audio_url
 
   return (
     <div
@@ -1447,16 +1508,21 @@ function SegmentItem({
         )}
 
         {/* 情绪标签行 */}
-        {seg.target_emotion && (
+        {displayEmotion && (
           <div className="seg-emo-row">
             <span className="seg-emo-badge">
-              {seg.target_emotion.primary}
+              {displayEmotion.primary}
             </span>
-            {seg.emo_vector && (
+            {hasOverride && (
+              <span className="seg-override-badge">已 override</span>
+            )}
+            {(seg.emo_vector ?? seg.overrides.vector) && (
               <span className="seg-vector-badge">向量</span>
             )}
-            {seg.emo_alpha !== undefined && (
-              <span className="seg-alpha-badge">α {seg.emo_alpha.toFixed(2)}</span>
+            {(seg.emo_alpha !== undefined || seg.overrides.alpha !== null) && (
+              <span className="seg-alpha-badge">
+                α {(seg.overrides.alpha ?? seg.emo_alpha ?? 0).toFixed(2)}
+              </span>
             )}
           </div>
         )}
@@ -1481,43 +1547,32 @@ function SegmentItem({
             <Icon name="regenerate" size={13} />
           </button>
 
-          {/* 重新合成 */}
-          {seg.ref_audio_filename && (
-            <button
-              className="seg-action-btn"
-              title="重新合成"
-              onClick={() => onSynth(seg.id)}
-            >
-              <Icon name="mic" size={13} />
-            </button>
-          )}
-
-          {/* 替换参考音 */}
+          {/* 合成/重新合成 */}
           <button
             className="seg-action-btn"
-            title="替换参考音"
-            onClick={() => onRefPicker(seg.id)}
+            title={seg.audio_url ? '重新合成' : '合成'}
+            onClick={() => onSynth(seg.id)}
           >
-            <Icon name="library" size={13} />
+            <Icon name="mic" size={13} />
           </button>
 
           {/* 试听参考音 */}
-          {seg.ref_audio_url && (
+          {displayRefUrl && (
             <button
               className="seg-action-btn"
               title="试听参考音"
               onClick={() => {
-                new Audio(seg.ref_audio_url!).play().catch(() => {})
+                new Audio(displayRefUrl).play().catch(() => {})
               }}
             >
               <Icon name="wave" size={13} />
             </button>
           )}
 
-          {/* 设置情绪向量 */}
+          {/* 高级模式（设置 overrides） */}
           <button
-            className={`seg-action-btn${seg.emo_vector ? ' is-active' : ''}`}
-            title={seg.emo_vector ? '已设情绪向量（点击修改）' : '设置情绪向量'}
+            className={`seg-action-btn${hasOverride ? ' is-active' : ''}`}
+            title={hasOverride ? '已设 override（点击修改）' : '高级模式 / 设置 override'}
             onClick={() => onVectorEdit(seg.id)}
           >
             <Icon name="sliders" size={13} />

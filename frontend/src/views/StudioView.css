@@ -318,6 +318,13 @@
   font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
 }
 
+.seg-override-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in oklch, var(--signal-warn) 14%, transparent);
+  color: var(--signal-warn);
+  font-weight: 500;
+}
+
 /* 操作按钮行 — hover 时才显示 */
 .seg-actions {
   display: flex; gap: 4px; align-items: center;
@@ -358,19 +365,14 @@
   display: flex; align-items: center; gap: 12px; justify-content: center; flex-wrap: wrap;
 }
 
-/* 向量状态 chip */
-.vector-chip {
+/* override 状态 chip（单句模式工具行） */
+.override-chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px;
   border-radius: 999px;
   font-size: 12px; font-weight: 500;
-  border: 1px solid var(--line);
-  background: var(--surface-2); color: var(--ink-3);
-}
-
-.vector-chip.is-active {
-  background: color-mix(in oklch, var(--signal-warn) 12%, transparent);
-  border-color: var(--signal-warn);
+  border: 1px solid var(--signal-warn);
+  background: color-mix(in oklch, var(--signal-warn) 10%, transparent);
   color: var(--signal-warn);
 }
 
@@ -383,16 +385,6 @@
   transition: opacity .12s;
 }
 .vector-chip__cancel:hover { opacity: 1; }
-
-/* chip cancel 小 x */
-.chip-cancel {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; border-radius: 50%;
-  margin-left: 2px;
-  opacity: .6;
-  transition: opacity .12s;
-}
-.chip-cancel:hover { opacity: 1; }
 
 /* btn-chip accent 变体 */
 .btn-chip--accent {
