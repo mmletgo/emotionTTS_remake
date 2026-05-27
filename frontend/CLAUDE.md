@@ -39,6 +39,7 @@ src/
 │   │                    #   ProgressResponse.stage: 'slicing'|'asr'|'tagging'|'writing'|null
 │   └── client.ts        # 类型化 fetch 封装：ApiError + 每个端点一个 named function
 │                        #   新增 relabelCharacter / createCharacter(enableLlmTagging) / appendToCharacter(enableLlmTagging)
+│                        #   testLlmConfig / testTtsConfig / testAsrConfig：用「正在编辑的字段」探活（不走 verify_active）
 ├── state/
 │   ├── AppContext.tsx   # 全局 theme / accent / activeChar / player
 │   ├── accentSwatches.ts # 强调色色板共享常量（SettingsView + ThemeQuickSwitch 共用）

@@ -3,7 +3,7 @@ API 数据模型定义 (Schemas)
 存放所有请求体和响应体的 Pydantic 模型，用于接口入参校验。
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List, Literal
 
 # ==========================================
@@ -24,6 +24,28 @@ class ConfigRequest(BaseModel):
     llm_configs: dict
     tts: dict
     asr: Optional[AsrConfig] = None
+
+
+class TestLlmRequest(BaseModel):
+    """单个 LLM 配置的连通性测试请求体（不落盘）。"""
+    api_base: str
+    api_key: str = ""
+    model: str
+
+
+class TestTtsRequest(BaseModel):
+    """TTS 配置的连通性测试请求体（不落盘）。"""
+    type: Literal["local", "cloud"] = "local"
+    api_base: str = ""
+    api_key: str = ""
+
+
+class TestAsrRequest(BaseModel):
+    """ASR 配置的连通性测试请求体（不落盘）。"""
+    type: Literal["local", "cloud"] = "local"
+    api_base: str = "http://127.0.0.1:9900/v1"
+    api_key: str = ""
+
 
 # ==========================================
 # 2. 角色素材相关模型 (Character Items)
@@ -72,5 +94,5 @@ class OpenAITTSRequest(BaseModel):
     model: str = "emotionTTS"
     input: str
     voice: str  # 外部调用时，这里传入你的“角色名”，比如“胡桃”
-    response_format: str = "wav"
-    speed: float = 1.0
+    response_format: Literal["wav", "mp3", "opus", "aac", "flac", "pcm"] = "wav"
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)

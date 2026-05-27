@@ -2,12 +2,23 @@
 合成相关业务流程：单段合成、多段合并。
 """
 import os
+import subprocess
 import uuid
 from typing import Any, Optional
 
 from pydub import AudioSegment
 
 from webapp.clients import tts as tts_client
+
+# OpenAI 兼容接口支持的输出格式 → HTTP Content-Type
+MEDIA_TYPES: dict[str, str] = {
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "opus": "audio/opus",
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "pcm": "audio/pcm",
+}
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
@@ -81,6 +92,83 @@ def merge_audio_files(audio_urls: list[str]) -> str:
     merged_path = os.path.join(OUTPUTS_DIR, merged_name)
     combined.export(merged_path, format="wav")
     return f"/outputs/{merged_name}"
+
+
+def apply_speed(path: str, speed: float) -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        OpenAI 兼容接口的 speed 字段允许 0.25–4.0 倍速。IndexTTS2 引擎本身不支持变速，
+        需要在合成后做时间拉伸（且必须保持音高）。
+
+    Code Logic（这个函数做什么）:
+        调用 ffmpeg 的 atempo 滤镜对 path 原地变速。atempo 单次只能在 0.5–2.0 范围内，
+        超出时把多个 atempo 串联起来等效达到目标倍率。speed ≈ 1.0 时直接返回不动文件。
+        变速产物覆写到原 path（仍为 WAV）。
+    """
+    if abs(speed - 1.0) < 1e-3:
+        return
+
+    filters: list[str] = []
+    remaining = speed
+    while remaining < 0.5:
+        filters.append("atempo=0.5")
+        remaining /= 0.5
+    while remaining > 2.0:
+        filters.append("atempo=2.0")
+        remaining /= 2.0
+    filters.append(f"atempo={remaining:.6f}")
+    chain = ",".join(filters)
+
+    tmp_out = f"{path}.speed.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", path, "-filter:a", chain, tmp_out],
+        check=True,
+        capture_output=True,
+    )
+    os.replace(tmp_out, path)
+
+
+def convert_format(path: str, target_format: str) -> str:
+    """
+    Business Logic（为什么需要这个函数）:
+        OpenAI TTS 协议允许调用方通过 response_format 选择 wav/mp3/opus/aac/flac/pcm；
+        本服务合成产物始终是 WAV，需要在响应前把 WAV 转成对方要的容器/编码。
+
+    Code Logic（这个函数做什么）:
+        target_format=='wav' 直接返回原 path；其余用 ffmpeg 转码到同目录同名新扩展名的
+        文件，转码成功后删除原 WAV，返回新文件绝对路径。pcm 输出按 OpenAI 约定为
+        24kHz / 单声道 / 16-bit signed little-endian 的裸样本（无文件头）。
+        未知 target_format 抛 ValueError。
+    """
+    fmt = target_format.lower()
+    if fmt == "wav":
+        return path
+
+    base, _ = os.path.splitext(path)
+    new_path = f"{base}.{fmt}"
+
+    if fmt == "pcm":
+        cmd = [
+            "ffmpeg", "-y", "-i", path,
+            "-f", "s16le", "-acodec", "pcm_s16le",
+            "-ar", "24000", "-ac", "1",
+            new_path,
+        ]
+    else:
+        codec_map = {
+            "mp3": "libmp3lame",
+            "opus": "libopus",
+            "aac": "aac",
+            "flac": "flac",
+        }
+        codec = codec_map.get(fmt)
+        if codec is None:
+            raise ValueError(f"Unsupported response_format: {target_format}")
+        cmd = ["ffmpeg", "-y", "-i", path, "-c:a", codec, new_path]
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    os.remove(path)
+    return new_path
 
 
 def normalize_sample_rate(path: str, target_hz: int = 24000) -> None:

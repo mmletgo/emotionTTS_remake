@@ -139,6 +139,30 @@ export interface VerifyActiveResponse {
   asr_status: 'success' | 'local_ready' | 'error';
 }
 
+/** 单引擎测试请求/响应（POST /api/config/test_{llm,tts,asr}），用前端正在编辑且尚未落盘的字段 */
+export interface TestLlmRequest {
+  api_base: string;
+  api_key: string;
+  model: string;
+}
+
+export interface TestTtsRequest {
+  type: 'local' | 'cloud';
+  api_base: string;
+  api_key: string;
+}
+
+export interface TestAsrRequest {
+  type: 'local' | 'cloud';
+  api_base: string;
+  api_key: string;
+}
+
+export interface TestEndpointResponse {
+  status: 'success' | 'error';
+  msg: string;
+}
+
 // ============================================================
 // 请求体
 // ============================================================

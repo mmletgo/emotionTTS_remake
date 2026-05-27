@@ -25,6 +25,10 @@ import type {
   StatusResponse,
   SynthesizeRequest,
   SynthesizeResponse,
+  TestAsrRequest,
+  TestEndpointResponse,
+  TestLlmRequest,
+  TestTtsRequest,
   UpdateItemsRequest,
   VerifyActiveResponse,
 } from './types';
@@ -119,6 +123,38 @@ export async function saveConfig(req: ConfigSaveRequest): Promise<StatusResponse
 /** GET /api/config/verify_active — 探活当前 LLM + TTS */
 export async function verifyActiveConfig(): Promise<VerifyActiveResponse> {
   return api<VerifyActiveResponse>('/api/config/verify_active');
+}
+
+/**
+ * POST /api/config/test_llm — 用当前正在编辑的 LLM 字段做连通性测试（不落盘）。
+ *
+ * Business Logic:
+ *   设置页的"测试连通"按钮应该测用户刚填入的字段，而不是已经保存的旧值。
+ *
+ * Code Logic:
+ *   把表单当前的 api_base/api_key/model 直接 POST 给后端，后端调用 llm_client.verify_config。
+ */
+export async function testLlmConfig(req: TestLlmRequest): Promise<TestEndpointResponse> {
+  return api<TestEndpointResponse>('/api/config/test_llm', {
+    method: 'POST',
+    ...json(req),
+  });
+}
+
+/** POST /api/config/test_tts — 同 testLlmConfig，针对 TTS。 */
+export async function testTtsConfig(req: TestTtsRequest): Promise<TestEndpointResponse> {
+  return api<TestEndpointResponse>('/api/config/test_tts', {
+    method: 'POST',
+    ...json(req),
+  });
+}
+
+/** POST /api/config/test_asr — 同 testLlmConfig，针对 ASR。 */
+export async function testAsrConfig(req: TestAsrRequest): Promise<TestEndpointResponse> {
+  return api<TestEndpointResponse>('/api/config/test_asr', {
+    method: 'POST',
+    ...json(req),
+  });
 }
 
 // ============================================================

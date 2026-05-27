@@ -1,11 +1,31 @@
 /**
  * 配置 Hook
- * 读取 / 保存 config，以及 LLM / TTS 连通性测试
+ * 读取 / 保存 config，以及 LLM / TTS / ASR 连通性测试
+ *
+ * 注意：testLlm/testTts/testAsr 接收"当前正在编辑的字段"，调用 /api/config/test_{llm,tts,asr}
+ * 接口测试用户刚填入但尚未保存的值；不再读已落盘的 config.json。
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { getConfig, saveConfig, verifyActiveConfig } from '@/api/client';
-import type { Config, ConfigSaveRequest } from '@/api/types';
+import {
+  getConfig,
+  saveConfig,
+  testAsrConfig,
+  testLlmConfig,
+  testTtsConfig,
+} from '@/api/client';
+import type {
+  Config,
+  ConfigSaveRequest,
+  TestAsrRequest,
+  TestLlmRequest,
+  TestTtsRequest,
+} from '@/api/types';
+
+export interface TestResult {
+  ok: boolean;
+  msg: string;
+}
 
 interface UseConfigResult {
   config: Config | null;
@@ -13,9 +33,9 @@ interface UseConfigResult {
   saving: boolean;
   error: string | null;
   save: (c: ConfigSaveRequest) => Promise<void>;
-  testLlm: () => Promise<boolean>;
-  testTts: () => Promise<boolean>;
-  testAsr: () => Promise<boolean>;
+  testLlm: (req: TestLlmRequest) => Promise<TestResult>;
+  testTts: (req: TestTtsRequest) => Promise<TestResult>;
+  testAsr: (req: TestAsrRequest) => Promise<TestResult>;
   refresh: () => void;
 }
 
@@ -69,30 +89,30 @@ export function useConfig(): UseConfigResult {
     }
   }, []);
 
-  const testLlm = useCallback(async (): Promise<boolean> => {
+  const testLlm = useCallback(async (req: TestLlmRequest): Promise<TestResult> => {
     try {
-      const res = await verifyActiveConfig();
-      return res.llm_status === 'success';
-    } catch {
-      return false;
+      const res = await testLlmConfig(req);
+      return { ok: res.status === 'success', msg: res.msg };
+    } catch (err) {
+      return { ok: false, msg: err instanceof Error ? err.message : String(err) };
     }
   }, []);
 
-  const testTts = useCallback(async (): Promise<boolean> => {
+  const testTts = useCallback(async (req: TestTtsRequest): Promise<TestResult> => {
     try {
-      const res = await verifyActiveConfig();
-      return res.tts_status === 'success' || res.tts_status === 'local_ready';
-    } catch {
-      return false;
+      const res = await testTtsConfig(req);
+      return { ok: res.status === 'success', msg: res.msg };
+    } catch (err) {
+      return { ok: false, msg: err instanceof Error ? err.message : String(err) };
     }
   }, []);
 
-  const testAsr = useCallback(async (): Promise<boolean> => {
+  const testAsr = useCallback(async (req: TestAsrRequest): Promise<TestResult> => {
     try {
-      const res = await verifyActiveConfig();
-      return res.asr_status === 'success' || res.asr_status === 'local_ready';
-    } catch {
-      return false;
+      const res = await testAsrConfig(req);
+      return { ok: res.status === 'success', msg: res.msg };
+    } catch (err) {
+      return { ok: false, msg: err instanceof Error ? err.message : String(err) };
     }
   }, []);
 

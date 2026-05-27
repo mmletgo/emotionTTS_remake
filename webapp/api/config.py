@@ -6,7 +6,12 @@ from fastapi import APIRouter, HTTPException
 from webapp.clients import llm as llm_client
 from webapp.clients import tts as tts_client
 from webapp.clients import asr as asr_client
-from webapp.schemas.api_models import ConfigRequest
+from webapp.schemas.api_models import (
+    ConfigRequest,
+    TestAsrRequest,
+    TestLlmRequest,
+    TestTtsRequest,
+)
 from webapp.settings import get_config, save_config
 
 router = APIRouter(tags=["Configuration"])
@@ -79,6 +84,39 @@ async def verify_active() -> dict:
         "tts_status": tts_status,
         "llm_status": llm_status,
         "asr_status": asr_status,
+    }
+
+
+@router.post("/api/config/test_llm")
+async def test_llm(req: TestLlmRequest) -> dict:
+    """
+    用前端正在编辑（尚未落盘）的 LLM 字段做连通性测试，返回 {status, msg}。
+    与 /verify_active 的区别：不读 config.json，而是直接用请求体里的字段。
+    """
+    result = await llm_client.verify_config(req.model_dump())
+    return {
+        "status": "success" if result.get("valid") else "error",
+        "msg": result.get("msg", ""),
+    }
+
+
+@router.post("/api/config/test_tts")
+async def test_tts(req: TestTtsRequest) -> dict:
+    """用前端正在编辑的 TTS 字段做连通性测试，返回 {status, msg}。"""
+    result = await tts_client.verify_endpoint(req.model_dump())
+    return {
+        "status": "success" if result.get("valid") else "error",
+        "msg": result.get("msg", ""),
+    }
+
+
+@router.post("/api/config/test_asr")
+def test_asr(req: TestAsrRequest) -> dict:
+    """用前端正在编辑的 ASR 字段做连通性测试，返回 {status, msg}。"""
+    reachable = asr_client.ping(req.api_base, req.api_key)
+    return {
+        "status": "success" if reachable else "error",
+        "msg": "" if reachable else "无法连接 ASR 服务",
     }
 
 

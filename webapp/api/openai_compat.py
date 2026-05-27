@@ -6,12 +6,16 @@ OpenAI 兼容外部接口：/v1/audio/speech + /v1/voices。
 - 入参 voice 接受"角色名"或"目录名"
 - input 文本会先去掉括号内的动作/表情提示词
 - 合成产物文件名前缀 api_synth_*
-- 返回 24kHz WAV（QQ 等部分客户端兼容性）
+- 默认 24kHz 输出（QQ 等客户端兼容性），通过 response_format 支持
+  wav / mp3 / opus / aac / flac / pcm 六种容器/编码
+- speed ∈ [0.25, 4.0] 在合成后用 ffmpeg atempo 做保持音高的变速
+- 候选池不受 is_api_safe 限制（api_priority=False，使用全部已打标素材）
 
 /v1/voices 复用 domain.characters.list_all()，按 OpenAI list 协议
 （{"object":"list","data":[...]}) 返回，外部客户端发现可用角色用。
 """
 import re
+import subprocess
 import traceback
 
 from fastapi import APIRouter, HTTPException
@@ -65,7 +69,7 @@ async def openai_tts(req: OpenAITTSRequest):
     tts_cfg = cfg["tts"]
 
     try:
-        match_result = await matcher.match_for_text(req.voice, clean_text, llm_cfg)
+        match_result = await matcher.match_for_text(req.voice, clean_text, llm_cfg, api_priority=False)
     except matcher.CharacterNotFound:
         raise HTTPException(status_code=404, detail=f"角色【{req.voice}】不存在")
     except matcher.EmptyLibrary:
@@ -98,5 +102,13 @@ async def openai_tts(req: OpenAITTSRequest):
     # 兼容性：QQ 等客户端要求 24kHz
     synthesizer.normalize_sample_rate(out_path, target_hz=24000)
 
-    media_type = f"audio/{req.response_format}" if req.response_format else "audio/wav"
-    return FileResponse(out_path, media_type=media_type)
+    # OpenAI 协议：speed ∈ [0.25, 4.0] 在合成后做变速；response_format 决定容器/编码
+    try:
+        synthesizer.apply_speed(out_path, req.speed)
+        final_path = synthesizer.convert_format(out_path, req.response_format)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode("utf-8", errors="ignore") if e.stderr else ""
+        raise HTTPException(status_code=500, detail=f"音频后处理失败：{stderr[:500]}")
+
+    media_type = synthesizer.MEDIA_TYPES.get(req.response_format, "audio/wav")
+    return FileResponse(final_path, media_type=media_type)

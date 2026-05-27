@@ -11,7 +11,7 @@
 | `library_editor.py` | 已建好的素材库的二次编辑：merge_items_logic（多段合并）/ manual_split_logic（按时间切分 + ASR 重写字幕）/ **relabel_emotions_logic**（对已有 items 重跑 LLM 情绪打标，item_ids=None 表示全量）。LLM 配置不可用时 relabel 抛 EmotionTaggerError，由 api 层翻译为 500。新生成的 item `is_api_safe` 总是 false（不继承原 item，见 PRD 5.6）|
 | `emotion_tagger.py` | LLM 批量情绪打标。`tag_items_sync(items, llm_cfg, batch_size=15, progress_callback)` 将 items 分组，每组一次 `asyncio.run(llm_client.chat_json(...))` 调用（sync 调 async 安全用法：threadpool 无 event loop）；单组失败打印警告跳过不抛出；llm_cfg 不可用（api_base/model 为空）时抛 `EmotionTaggerError`。|
 | `matcher.py` | 智能匹配主流程 `match_for_text(char_id, text, llm_cfg, manual_emotion=None, api_priority=True)`：选候选池（api_priority 控制是否启用 is_api_safe 独占）→ 拼 system_prompt（manual_emotion 非空时追加锁定指令）→ 调 `clients.llm.chat_json` → 解析 best_pool_id / emo_vector / emo_alpha → manual_emotion 非空时强制覆盖 target_emotion → 情绪叠加 0.6 折算 |
-| `synthesizer.py` | 合成相关：synthesize_with_reference（拼 payload + 调 clients.tts.synthesize）/ merge_audio_files / normalize_sample_rate |
+| `synthesizer.py` | 合成相关：synthesize_with_reference（拼 payload + 调 clients.tts.synthesize）/ merge_audio_files / normalize_sample_rate / **apply_speed**（ffmpeg atempo 保持音高变速，0.5–2.0 外串联多段）/ **convert_format**（ffmpeg 转 wav/mp3/opus/aac/flac/pcm，pcm 为 24kHz s16le 单声道裸样本）/ MEDIA_TYPES（format → Content-Type 映射） |
 | `text_splitter.py` | 长文本智能拆分（中英标点感知、缩写保护、二段折半切分等） |
 
 ## 约束

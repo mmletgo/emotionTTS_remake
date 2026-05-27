@@ -56,7 +56,7 @@ function SegCtlSettings<T extends string>({
 }
 
 export default function SettingsView() {
-  const { config, saving, testLlm, testTts, testAsr } = useConfig()
+  const { config, saving, save, testLlm, testTts, testAsr } = useConfig()
   const { settings: uiSettings, update: updateUi } = useUiSettings()
   const { theme, setTheme, accent, setAccent } = useApp()
 
@@ -66,6 +66,7 @@ export default function SettingsView() {
   const [llmApiKey, setLlmApiKey] = useState<string>('')
   const [llmModel, setLlmModel] = useState<string>('qwen2.5:7b')
   const [llmStatus, setLlmStatus] = useState<'idle' | 'ok' | 'err'>('idle')
+  const [llmStatusMsg, setLlmStatusMsg] = useState<string>('')
   const [llmTesting, setLlmTesting] = useState<boolean>(false)
 
   // ASR local state
@@ -73,12 +74,18 @@ export default function SettingsView() {
   const [asrApiBase, setAsrApiBase] = useState<string>('http://127.0.0.1:9900/v1')
   const [asrApiKey, setAsrApiKey] = useState<string>('')
   const [asrStatus, setAsrStatus] = useState<'idle' | 'ok' | 'err'>('idle')
+  const [asrStatusMsg, setAsrStatusMsg] = useState<string>('')
   const [asrTesting, setAsrTesting] = useState<boolean>(false)
 
   // TTS local state
   const [ttsDeploy, setTtsDeploy] = useState<TtsDeployType>('local')
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'ok' | 'err'>('idle')
+  const [ttsStatusMsg, setTtsStatusMsg] = useState<string>('')
   const [ttsTesting, setTtsTesting] = useState<boolean>(false)
+
+  // 保存按钮反馈
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'ok' | 'err'>('idle')
+  const [saveStatusMsg, setSaveStatusMsg] = useState<string>('')
 
   // Sync from config on load
   useEffect(() => {
@@ -109,24 +116,73 @@ export default function SettingsView() {
 
   const handleTestLlm = useCallback(async () => {
     setLlmTesting(true)
-    const ok = await testLlm()
-    setLlmStatus(ok ? 'ok' : 'err')
+    const res = await testLlm({
+      api_base: llmApiBase,
+      api_key: llmApiKey,
+      model: llmModel,
+    })
+    setLlmStatus(res.ok ? 'ok' : 'err')
+    setLlmStatusMsg(res.msg)
     setLlmTesting(false)
-  }, [testLlm])
+  }, [testLlm, llmApiBase, llmApiKey, llmModel])
 
   const handleTestTts = useCallback(async () => {
     setTtsTesting(true)
-    const ok = await testTts()
-    setTtsStatus(ok ? 'ok' : 'err')
+    const res = await testTts({
+      type: ttsDeploy,
+      api_base: ttsDeploy === 'local' ? 'http://127.0.0.1:9800/v1' : '',
+      api_key: '',
+    })
+    setTtsStatus(res.ok ? 'ok' : 'err')
+    setTtsStatusMsg(res.msg)
     setTtsTesting(false)
-  }, [testTts])
+  }, [testTts, ttsDeploy])
 
   const handleTestAsr = useCallback(async () => {
     setAsrTesting(true)
-    const ok = await testAsr()
-    setAsrStatus(ok ? 'ok' : 'err')
+    const res = await testAsr({
+      type: asrDeploy,
+      api_base: asrApiBase,
+      api_key: asrApiKey,
+    })
+    setAsrStatus(res.ok ? 'ok' : 'err')
+    setAsrStatusMsg(res.msg)
     setAsrTesting(false)
-  }, [testAsr])
+  }, [testAsr, asrDeploy, asrApiBase, asrApiKey])
+
+  const handleSave = useCallback(async () => {
+    if (!config) return
+    setSaveStatus('idle')
+    setSaveStatusMsg('')
+    // 把当前 provider 的字段塞回 llm_configs[llmProvider]，其它 provider 沿用 config 中已有值
+    const mergedLlmConfigs = {
+      ...config.llm.configs,
+      [llmProvider]: { api_base: llmApiBase, api_key: llmApiKey, model: llmModel },
+    }
+    try {
+      await save({
+        llm_active_type: llmProvider,
+        llm_configs: mergedLlmConfigs,
+        tts: {
+          type: ttsDeploy,
+          api_base: ttsDeploy === 'local' ? 'http://127.0.0.1:9800/v1' : (config.tts.api_base ?? ''),
+          api_key: config.tts.api_key ?? '',
+        },
+        asr: {
+          type: asrDeploy,
+          api_base: asrApiBase,
+          api_key: asrApiKey,
+          model: config.asr?.model ?? 'whisper-small',
+          language: config.asr?.language ?? 'zh',
+        },
+      })
+      setSaveStatus('ok')
+      setSaveStatusMsg('已保存')
+    } catch (err) {
+      setSaveStatus('err')
+      setSaveStatusMsg(err instanceof Error ? err.message : String(err))
+    }
+  }, [config, save, llmProvider, llmApiBase, llmApiKey, llmModel, ttsDeploy, asrDeploy, asrApiBase, asrApiKey])
 
   const toggleApiPriority = useCallback(() => {
     updateUi({ api_priority: !uiSettings.api_priority })
@@ -492,6 +548,22 @@ export default function SettingsView() {
             />
           </div>
         </div>
+      </div>
+
+      {/* 保存栏 */}
+      <div className="settings-savebar">
+        <div className={`settings-savebar-msg ${saveStatus}`}>
+          {saveStatus === 'ok' && saveStatusMsg}
+          {saveStatus === 'err' && `保存失败：${saveStatusMsg}`}
+          {saveStatus === 'idle' && (llmStatusMsg || ttsStatusMsg || asrStatusMsg)}
+        </div>
+        <button
+          className="btn-save"
+          onClick={handleSave}
+          disabled={saving || !config}
+        >
+          {saving ? '保存中…' : '保存配置'}
+        </button>
       </div>
     </div>
   )
