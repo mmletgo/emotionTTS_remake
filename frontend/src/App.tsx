@@ -1,6 +1,6 @@
 /**
  * Business Logic:
- *   应用根组件，组装 TopNav、三个视图、BottomPlayer、TweaksPanel，
+ *   应用根组件，组装 TopNav、三个视图、BottomPlayer，
  *   activeView（路由切换）用本地 useState 管理。
  *   theme / accent / activeChar / player 等全局状态消费 AppContext。
  *
@@ -12,7 +12,6 @@
 import { useState } from 'react'
 import TopNav from './components/TopNav'
 import BottomPlayer from './components/BottomPlayer'
-import TweaksPanel from './components/TweaksPanel'
 import StudioView from './views/StudioView'
 import LibraryView from './views/LibraryView'
 import SettingsView from './views/SettingsView'
@@ -22,7 +21,6 @@ import { useCharacters } from './hooks/useCharacters'
 
 function AppInner() {
   const [activeView, setActiveView] = useState<ViewName>('studio')
-  const [playerVisible, setPlayerVisible] = useState<boolean>(true)
 
   const { activeChar, setActiveChar, player, setPlayer } = useApp()
   const { data: characters } = useCharacters()
@@ -36,7 +34,7 @@ function AppInner() {
   }
 
   return (
-    <div className="app" style={playerVisible ? undefined : { gridTemplateRows: '52px 1fr 0px' }}>
+    <div className="app">
       <TopNav activeView={activeView} onViewChange={setActiveView} />
 
       <main className="main">
@@ -56,18 +54,14 @@ function AppInner() {
         )}
       </main>
 
-      {playerVisible && (
-        <BottomPlayer
-          src={player.src}
-          title={player.title}
-          sub={player.sub}
-          playing={player.playing}
-          activeChar={activeChar}
-          onPlayingChange={handlePlayingChange}
-        />
-      )}
-
-      <TweaksPanel onPlayerVisibilityChange={setPlayerVisible} />
+      <BottomPlayer
+        src={player.src}
+        title={player.title}
+        sub={player.sub}
+        playing={player.playing}
+        activeChar={activeChar}
+        onPlayingChange={handlePlayingChange}
+      />
     </div>
   )
 }

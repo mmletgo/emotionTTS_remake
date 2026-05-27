@@ -13,7 +13,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import './BottomPlayer.css'
 import Icon from '../icons/Icon'
 import type { Character } from '@/api/types'
-import { getAvatarDisplay } from '../utils/avatar'
+import Avatar from './Avatar'
 
 interface BottomPlayerProps {
   src: string | null
@@ -117,12 +117,7 @@ export default function BottomPlayer({
 
       {/* Left: cover + info */}
       <div className="player__now">
-        <div
-          className="player__cover"
-          style={activeChar ? { background: getAvatarDisplay(activeChar).gradient } : undefined}
-        >
-          {activeChar ? getAvatarDisplay(activeChar).char : 'E'}
-        </div>
+        <Avatar char={activeChar} className="player__cover" fallbackText="E" />
         <div className="player__info">
           <div className="player__title">{title || '暂无合成结果'}</div>
           <div className="player__sub">{sub || '合成后在此播放'}</div>

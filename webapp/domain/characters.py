@@ -56,12 +56,18 @@ def list_all() -> list[dict[str, Any]]:
                 break
         items = db.get("items", [])
         preview = f"/characters/{d}/{items[0]['filename'].replace(os.sep, '/')}" if items else None
+        emotion_primaries: set[str] = set()
+        for it in items:
+            primary = (it.get("emotion") or {}).get("primary")
+            if isinstance(primary, str) and primary:
+                emotion_primaries.add(primary)
         chars.append(
             {
                 "id": d,
                 "name": db.get("char_name", d),
                 "avatar": avatar_url,
                 "count": len(items),
+                "emotion_count": len(emotion_primaries),
                 "preview_audio": preview,
             }
         )

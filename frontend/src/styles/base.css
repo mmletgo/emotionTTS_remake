@@ -33,6 +33,9 @@ input, textarea, select { font: inherit; color: inherit; }
 .i-sm { width: 14px; height: 14px; }
 .i-lg { width: 22px; height: 22px; }
 
+/* Avatar image — 通用样式，让 <Avatar> 在任意容器内填满并裁切 */
+.avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -45,7 +48,7 @@ input, textarea, select { font: inherit; color: inherit; }
   min-height: 100vh;
 }
 
-/* Main content frame — controlled by Tweaks → alignment */
+/* Main content frame */
 .main {
   width: 100%;
   max-width: 1100px;
@@ -54,62 +57,3 @@ input, textarea, select { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
 }
-
-/* ============================================================
-   Tweaks overrides — alignment & corner style
-   These apply globally via <html data-alignment data-corner>
-   ============================================================ */
-
-/* Alignment: left = stretch full width, anchored left */
-:root[data-alignment="left"] .main {
-  max-width: 1200px;
-  margin: 0;
-  padding-left: 48px;
-  padding-right: 32px;
-}
-
-/* Corner style — applied to major card / button / surface classes.
-   Targets the radius values A used in component CSS. */
-
-:root[data-corner="sharp"] .script-card,
-:root[data-corner="sharp"] .cast-card,
-:root[data-corner="sharp"] .lib-card,
-:root[data-corner="sharp"] .settings-group,
-:root[data-corner="sharp"] .seg-list .seg-item,
-:root[data-corner="sharp"] .sheet,
-:root[data-corner="sharp"] .cast-picker-sheet,
-:root[data-corner="sharp"] .ref-picker-sheet,
-:root[data-corner="sharp"] .tweaks,
-:root[data-corner="sharp"] .diag-preview { border-radius: 6px; }
-
-:root[data-corner="sharp"] .btn-primary,
-:root[data-corner="sharp"] .btn-chip,
-:root[data-corner="sharp"] .player,
-:root[data-corner="sharp"] .seg-ctl,
-:root[data-corner="sharp"] .seg-ctl-settings,
-:root[data-corner="sharp"] .nav-segments,
-:root[data-corner="sharp"] .nav-seg,
-:root[data-corner="sharp"] .studio-mode,
-:root[data-corner="sharp"] .studio-mode button,
-:root[data-corner="sharp"] .filter-tab,
-:root[data-corner="sharp"] .emo-tag,
-:root[data-corner="sharp"] .seg-status { border-radius: 6px; }
-
-:root[data-corner="round"] .script-card,
-:root[data-corner="round"] .cast-card,
-:root[data-corner="round"] .lib-card,
-:root[data-corner="round"] .settings-group,
-:root[data-corner="round"] .seg-list .seg-item,
-:root[data-corner="round"] .sheet,
-:root[data-corner="round"] .cast-picker-sheet,
-:root[data-corner="round"] .ref-picker-sheet,
-:root[data-corner="round"] .tweaks,
-:root[data-corner="round"] .diag-preview { border-radius: 28px; }
-
-:root[data-corner="round"] .btn-chip,
-:root[data-corner="round"] .seg-ctl,
-:root[data-corner="round"] .seg-ctl-settings,
-:root[data-corner="round"] .nav-segments,
-:root[data-corner="round"] .studio-mode { border-radius: 14px; }
-/* .btn-primary 已经是 999px pill 不动 */
-

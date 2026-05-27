@@ -25,6 +25,6 @@ export default defineConfig({
     outDir: '../webapp/frontend',
     emptyOutDir: true,
     assetsDir: 'assets',
-    sourcemap: false,
+    sourcemap: true,
   },
 })

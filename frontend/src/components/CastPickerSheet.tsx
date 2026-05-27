@@ -12,7 +12,7 @@ import { useState, useMemo } from 'react'
 import './CastPickerSheet.css'
 import Icon from '../icons/Icon'
 import type { Character } from '@/api/types'
-import { getAvatarDisplay } from '../utils/avatar'
+import Avatar from './Avatar'
 
 interface CastPickerSheetProps {
   open: boolean
@@ -74,12 +74,7 @@ export default function CastPickerSheet({
                 onClose()
               }}
             >
-              <div
-                className="cast-picker__avatar"
-                style={{ background: getAvatarDisplay(char).gradient }}
-              >
-                {getAvatarDisplay(char).char}
-              </div>
+              <Avatar char={char} className="cast-picker__avatar" />
               <div className="cast-picker__name">{char.name}</div>
               <div className="cast-picker__meta">{char.item_count} 段</div>
             </button>

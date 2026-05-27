@@ -14,7 +14,7 @@ import { useState, useMemo, useCallback, useRef } from 'react'
 import './LibraryView.css'
 import Icon from '../icons/Icon'
 import type { Character, EmotionIntensity, EmotionPrimary, LibraryItem } from '@/api/types'
-import { getAvatarDisplay } from '../utils/avatar'
+import Avatar from '../components/Avatar'
 import { useCharacterDetail } from '@/hooks/useCharacterDetail'
 import { useCharacters } from '@/hooks/useCharacters'
 import { useDeleteCharacter } from '@/hooks/useDeleteCharacter'
@@ -93,7 +93,6 @@ function CharGrid({
   return (
     <div className="lib-grid">
       {filtered.map((char) => {
-        const { char: avatarChar, gradient } = getAvatarDisplay(char)
         return (
           <article
             key={char.char_id}
@@ -135,11 +134,7 @@ function CharGrid({
               </button>
             </div>
 
-            <div className="lib-card-avatar" style={{ background: gradient }}>
-              {char.avatar_url ? (
-                <img src={char.avatar_url} alt={char.name} className="lib-card-avatar-img" />
-              ) : avatarChar}
-            </div>
+            <Avatar char={char} className="lib-card-avatar" />
             <div className="lib-card-name">{char.name}</div>
             <div className="lib-card-meta">{char.item_count} 段</div>
           </article>
@@ -501,11 +496,7 @@ function CharDetailInner({
         <button className="lib-detail-back" onClick={onBack}>
           <Icon name="chev-left" size={16} /> 角色库
         </button>
-        <div className="lib-detail-avatar" style={{ background: getAvatarDisplay(char).gradient }}>
-          {char.avatar_url ? (
-            <img src={char.avatar_url} alt={char.name} className="lib-detail-avatar-img" />
-          ) : getAvatarDisplay(char).char}
-        </div>
+        <Avatar char={char} className="lib-detail-avatar" />
         <div className="lib-detail-info">
           <div className="lib-detail-name">{char.name}</div>
           <div className="lib-detail-sub">

@@ -23,6 +23,7 @@
   font-size: 16px; font-weight: 600; color: white;
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .player__info { display: flex; flex-direction: column; min-width: 0; }

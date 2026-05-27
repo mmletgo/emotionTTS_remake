@@ -18,10 +18,10 @@ npx tsc --noEmit          # 类型检查（应为 0 errors）
 
 ```
 src/
-├── App.tsx              # 根：TopNav + 当前 view + BottomPlayer + TweaksPanel + AppProvider
+├── App.tsx              # 根：TopNav + 当前 view + BottomPlayer + AppProvider
 ├── main.tsx             # createRoot + AppProvider 包裹
 ├── views/               # 三个顶层 view：Studio (单句+长文本) / Library / Settings
-├── components/          # 共享 UI：TopNav / BottomPlayer / Sheet 系（Cast/Reference/Advanced/Character/Rename/ManualSplit/EmotionEditPopover）/ TweaksPanel
+├── components/          # 共享 UI：TopNav / BottomPlayer / Sheet 系（Cast/Reference/Advanced/Character/Rename/ManualSplit/EmotionEditPopover）
 ├── hooks/               # 业务 hook 一个文件一个：useCharacters / useMatch / useSynthesize / useLongTextSplit / useBuildCharacter (含轮询) / useSequentialPlay / useMergeOutputs / ...
 ├── api/
 │   ├── types.ts         # 全部 API 实体 + 请求/响应 interface
@@ -32,7 +32,7 @@ src/
 │   └── Icon.tsx         # SVG sprite + <Icon name="..."/>（30+ Apple HIG 风格 line icon）
 ├── styles/
 │   ├── tokens.css       # 设计 token（CSS variables，含 light/dark 两套）
-│   └── base.css         # reset + .main 容器 + Tweaks alignment/corner override
+│   └── base.css         # reset + .main 容器
 └── utils/               # avatar / exportZip (JSZip) / longText 类型 等纯函数
 ```
 
@@ -49,7 +49,7 @@ src/
 
 - **配色**：`var(--accent)` 通过 hue 数字（38 = 暖橙默认）按当前 `data-theme` 动态计算 3 个变量（accent / accent-soft / accent-strong），切主题时 accent 跟着重算 —— **不要直接写死颜色**，统一用 `var(--accent*)`
 - **字体**：`-apple-system, PingFang SC, ...`，等宽数字加 `.mono` class
-- **圆角**：14-22px 大圆角默认；Tweaks 的 `[data-corner="sharp|round"]` 在 base.css 里用属性选择器 override 常见容器
+- **圆角**：14-22px 大圆角默认，组件 CSS 直接写死，无全局 override 机制
 - **图标**：永远不用 emoji 当 icon，统一 `<Icon name="play" size={18} />`，缺什么往 `icons/Icon.tsx` 的 sprite 加 `<symbol>`
 - **浮层**：用 sheet 模式（scrim 半透 backdrop + 居中圆角 sheet），不用全屏 modal；popover 适合不打断用户的编辑（如情绪编辑）
 

@@ -83,6 +83,7 @@
   font-size: 32px; font-weight: 600; color: white;
   background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .cast-picker__name { font-size: 14px; font-weight: 600; }

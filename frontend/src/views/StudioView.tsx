@@ -20,6 +20,7 @@ import Icon from '../icons/Icon'
 import CastPickerSheet from '../components/CastPickerSheet'
 import AdvancedSheet, { DEFAULT_SETTINGS } from '../components/AdvancedSheet'
 import ReferencePickerSheet from '../components/ReferencePickerSheet'
+import Avatar from '../components/Avatar'
 import type { AdvancedSettings } from '../components/AdvancedSheet'
 import type { Character, LibraryItem, EmotionVector } from '@/api/types'
 import type { LongTextSegment } from '../utils/longText'
@@ -775,12 +776,7 @@ export default function StudioView({
 
             {activeChar ? (
               <div className="cast-card" onClick={() => setCastPickerOpen(true)}>
-                <div
-                  className="cast-avatar"
-                  style={{ background: activeChar.avatar_url ?? undefined }}
-                >
-                  {activeChar.name.charAt(0)}
-                </div>
+                <Avatar char={activeChar} className="cast-avatar" />
                 <div className="cast-meta">
                   <div className="cast-name">{activeChar.name}</div>
                   <div className="cast-sub">
@@ -809,7 +805,7 @@ export default function StudioView({
               </div>
             ) : (
               <div className="cast-card" onClick={() => setCastPickerOpen(true)}>
-                <div className="cast-avatar">?</div>
+                <Avatar char={null} className="cast-avatar" />
                 <div className="cast-meta">
                   <div className="cast-name">点击选择角色</div>
                   <div className="cast-sub">尚未选择</div>
@@ -1000,10 +996,56 @@ export default function StudioView({
       {/* ── Long text mode ───────────────────────────────────── */}
       {mode === 'long' && (
         <div>
-          {/* Step 1: Import text */}
-          <div className="step">
+          {/* Step 1: Choose voice */}
+          <div className={`step${activeChar ? ' is-done' : ''}`}>
             <div className="step-head">
               <div className="step-num">1</div>
+              <div className="step-title">选个声音</div>
+              <div className="step-hint">点击卡片切换角色</div>
+            </div>
+
+            {activeChar ? (
+              <div className="cast-card" onClick={() => setCastPickerOpen(true)}>
+                <Avatar char={activeChar} className="cast-avatar" />
+                <div className="cast-meta">
+                  <div className="cast-name">{activeChar.name}</div>
+                  <div className="cast-sub">
+                    {activeChar.item_count} 个片段 · 覆盖 {activeChar.emotion_count} 种情绪
+                  </div>
+                </div>
+                <div className="cast-actions">
+                  <button
+                    className="btn-icon"
+                    title="切换角色"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setCastPickerOpen(true)
+                    }}
+                  >
+                    <Icon name="swap" size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="cast-card" onClick={() => setCastPickerOpen(true)}>
+                <Avatar char={null} className="cast-avatar" />
+                <div className="cast-meta">
+                  <div className="cast-name">点击选择角色</div>
+                  <div className="cast-sub">尚未选择</div>
+                </div>
+                <div className="cast-actions">
+                  <button className="btn-icon" title="选择角色">
+                    <Icon name="swap" size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Step 2: Import text */}
+          <div className="step">
+            <div className="step-head">
+              <div className="step-num">2</div>
               <div className="step-title">粘贴或导入长文本</div>
               <div className="step-hint">支持 .txt / .srt 字幕</div>
             </div>
@@ -1089,10 +1131,10 @@ export default function StudioView({
             </div>
           </div>
 
-          {/* Step 2: Batch list */}
+          {/* Step 3: Batch list */}
           <div className="step">
             <div className="step-head">
-              <div className="step-num">2</div>
+              <div className="step-num">3</div>
               <div className="step-title">智能拆分与逐句合成</div>
             </div>
 

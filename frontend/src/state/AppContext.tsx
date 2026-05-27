@@ -67,7 +67,7 @@ function applyTheme(theme: Theme): void {
 
 /**
  * Business Logic:
- *   accent 是用户在 Tweaks/Settings 里切换的强调色。我们存 hue 数字（38 = 暖橙），
+ *   accent 是用户在 Settings 里切换的强调色。我们存 hue 数字（38 = 暖橙），
  *   渲染时根据当前主题给出对应 lightness/chroma 的 oklch —— 这样暗色和亮色下
  *   都有合适的亮度对比，并且 --accent-soft/--accent-strong 派生色保持一致。
  *

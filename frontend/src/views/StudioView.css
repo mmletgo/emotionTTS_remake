@@ -69,6 +69,7 @@
   display: grid; place-items: center;
   font-size: 24px; font-weight: 600; color: white;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .cast-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

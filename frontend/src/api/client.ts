@@ -125,14 +125,91 @@ export async function verifyActiveConfig(): Promise<VerifyActiveResponse> {
 // 角色端点
 // ============================================================
 
-/** GET /api/characters — 角色列表 */
-export async function getCharacters(): Promise<Character[]> {
-  return api<Character[]>('/api/characters');
+/** 后端 /api/characters 返回的原始结构（与前端 Character 字段不同）。 */
+interface RawCharacterListItem {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  count?: number;
+  emotion_count?: number;
+  preview_audio?: string | null;
 }
 
-/** GET /api/characters/{char_id}/details — 角色详情（素材库） */
+/**
+ * GET /api/characters — 角色列表
+ *
+ * Business Logic:
+ *   后端 API 字段名（id/avatar/count）与前端 Character 类型字段名（char_id/avatar_url/
+ *   item_count/emotion_count/updated_at）历史上不一致，前端 86 处都按 char_id 用，
+ *   保持前端字段名稳定、在 client 层一次性做映射的成本最低。
+ *
+ * Code Logic:
+ *   把后端 RawCharacterListItem 映射成前端 Character；列表场景不返回 updated_at，
+ *   给空串占位；avatar 字段为空时 avatar_url 设 undefined。
+ */
+export async function getCharacters(): Promise<Character[]> {
+  const raw = await api<RawCharacterListItem[]>('/api/characters');
+  return raw.map((r) => ({
+    char_id: r.id,
+    name: r.name,
+    avatar_url: r.avatar || undefined,
+    item_count: r.count ?? 0,
+    emotion_count: r.emotion_count ?? 0,
+    updated_at: '',
+  }));
+}
+
+/** 后端 /api/characters/{id}/details 返回的原始 item 结构 */
+interface RawLibraryItem {
+  id: number;
+  filename: string;
+  text: string;
+  emotion?: { primary?: string; intensity?: string; complex?: string };
+  duration?: number;
+  is_api_safe?: boolean;
+  is_favorite?: boolean;
+}
+
+interface RawCharacterDetail {
+  char_id: string;
+  char_name: string;
+  avatar?: string | null;
+  items: RawLibraryItem[];
+}
+
+/**
+ * GET /api/characters/{char_id}/details — 角色详情（素材库）
+ *
+ * Business Logic:
+ *   同 getCharacters，后端返回的 item 只含嵌套 emotion，前端 LibraryItem 还需
+ *   平铺 emotion_primary/intensity/complex 兼容 + 拼出 audio_url。
+ *
+ * Code Logic:
+ *   把后端 raw item 映射成 LibraryItem：从 emotion 嵌套取出三字段平铺；
+ *   audio_url = /characters/{char_id}/{filename}；is_favorite 缺省 false。
+ */
 export async function getCharacterDetails(charId: string): Promise<CharacterDetail> {
-  return api<CharacterDetail>(`/api/characters/${encodeURIComponent(charId)}/details`);
+  const raw = await api<RawCharacterDetail>(
+    `/api/characters/${encodeURIComponent(charId)}/details`,
+  );
+  return {
+    char_id: raw.char_id,
+    name: raw.char_name,
+    avatar_url: raw.avatar || undefined,
+    items: raw.items.map((it) => ({
+      id: it.id,
+      item_id: it.id,
+      text: it.text,
+      filename: it.filename,
+      audio_url: `/characters/${encodeURIComponent(raw.char_id)}/${it.filename}`,
+      emotion: it.emotion as never,
+      emotion_primary: (it.emotion?.primary ?? '平') as never,
+      emotion_intensity: (it.emotion?.intensity ?? 'Medium') as never,
+      emotion_complex: it.emotion?.complex,
+      is_favorite: it.is_favorite ?? false,
+      is_api_safe: it.is_api_safe ?? false,
+    })),
+  };
 }
 
 /**
