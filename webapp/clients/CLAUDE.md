@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `llm.py` | `verify_config(cfg)` · `chat_json(user_content, cfg, system_prompt, tag)` | 任何 OpenAI 兼容 chat/completions（情绪打标、智能匹配都通过 chat_json） |
 | `tts.py` | `verify_endpoint(cfg)` · `synthesize(text, prompt_audio_path, output_abs_path, cfg, emo_vector, emo_alpha)` | 调 IndexTTS2 服务（本地 9800 或远端 api_base） |
+| `asr.py` | `transcribe(audio_path, *, api_base, api_key, model, language, response_format, prompt, timeout)` · `ping(api_base, api_key, timeout)` | 调 OpenAI 兼容 /v1/audio/transcriptions（本地 asr_service 9900 或云端 OpenAI 等）；失败抛 `AsrError` |
 
 ## 约束
 

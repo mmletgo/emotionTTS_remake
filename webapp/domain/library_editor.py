@@ -7,7 +7,8 @@ import os
 import json
 from pydub import AudioSegment
 
-from webapp.domain.library_builder import get_cpu_whisper_model, clean_text
+from webapp.domain.library_builder import clean_text, _get_asr_cfg
+from webapp.clients.asr import transcribe as asr_transcribe, AsrError
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
@@ -177,26 +178,50 @@ def manual_split_logic(char_id: str, item_id: int, split_time: float):
     part1.export(path1, format="wav")
     part2.export(path2, format="wav")
 
-    # 4. 使用 Whisper 重新识别切分后的音频字幕
+    # 4. 使用 ASR 服务重新识别切分后的音频字幕
+    asr_cfg = _get_asr_cfg()
+    api_base: str = asr_cfg.get("api_base", "http://127.0.0.1:9900/v1")
+    api_key: str = asr_cfg.get("api_key", "")
+    language: str = asr_cfg.get("language", "zh")
+
     try:
-        model = get_cpu_whisper_model()
-
-        # 强制关闭 vad_filter 和 condition_on_previous_text，保证前后段音频即使再短也能强行识别
         try:
-            res1 = model.transcribe(path1, language="zh", initial_prompt="以下是一段带标点符号的完整中文句子。",
-                                    vad_filter=False, condition_on_previous_text=False, beam_size=5)[0]
-            text1 = "".join([clean_text(s.text) for s in res1])
-        except Exception:
+            result1 = asr_transcribe(
+                path1,
+                api_base=api_base,
+                api_key=api_key,
+                language=language,
+                response_format="verbose_json",
+                prompt="以下是一段带标点符号的完整中文句子。",
+            )
+            if isinstance(result1, dict):
+                segments = result1.get("segments", [])
+                text1 = "".join(clean_text(seg.get("text", "")) for seg in segments) if segments else clean_text(result1.get("text", ""))
+            else:
+                text1 = clean_text(str(result1))
+        except (AsrError, Exception):
             text1 = ""
-        if not text1: text1 = target_item["text"] + " (前段)"
+        if not text1:
+            text1 = target_item["text"] + " (前段)"
 
         try:
-            res2 = model.transcribe(path2, language="zh", initial_prompt="以下是一段带标点符号的完整中文句子。",
-                                    vad_filter=False, condition_on_previous_text=False, beam_size=5)[0]
-            text2 = "".join([clean_text(s.text) for s in res2])
-        except Exception:
+            result2 = asr_transcribe(
+                path2,
+                api_base=api_base,
+                api_key=api_key,
+                language=language,
+                response_format="verbose_json",
+                prompt="以下是一段带标点符号的完整中文句子。",
+            )
+            if isinstance(result2, dict):
+                segments = result2.get("segments", [])
+                text2 = "".join(clean_text(seg.get("text", "")) for seg in segments) if segments else clean_text(result2.get("text", ""))
+            else:
+                text2 = clean_text(str(result2))
+        except (AsrError, Exception):
             text2 = ""
-        if not text2: text2 = target_item["text"] + " (后段)"
+        if not text2:
+            text2 = target_item["text"] + " (后段)"
 
     except Exception as e:
         print(f"⚠️ 切分后语音识别重写失败，已降级为普通切割: {e}")

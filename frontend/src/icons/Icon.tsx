@@ -187,6 +187,13 @@ const SPRITE_SVG = `
       <path d="M20 20H7L3 16l13-13 5.6 5.6a2 2 0 0 1 0 2.8L10 22"/>
       <path d="M6.5 17.5l3-3"/>
     </symbol>
+    <symbol id="i-transcribe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 3H5a2 2 0 0 0-2 2v4"/>
+      <path d="M9 3h6"/>
+      <path d="M15 3h4a2 2 0 0 1 2 2v4"/>
+      <path d="M3 9v3a9 9 0 0 0 9 9 9 9 0 0 0 9-9V9"/>
+      <path d="M7 13h3l2-4 2 8 2-4h1"/>
+    </symbol>
   </defs>
 </svg>
 `
@@ -212,6 +219,7 @@ export type IconName =
   | 'scissors' | 'sequential-play' | 'stop' | 'edit' | 'regenerate'
   | 'trash' | 'merge' | 'library' | 'check' | 'cancel'
   | 'star' | 'star-filled' | 'image' | 'save' | 'chev-left' | 'eraser'
+  | 'transcribe'
 
 interface IconProps {
   name: IconName

@@ -1,11 +1,11 @@
 /**
  * Business Logic:
- *   设置视图，管理 LLM 提供商配置、TTS 引擎配置和通用偏好，
+ *   设置视图，管理 LLM 提供商配置、ASR 语音识别配置、TTS 引擎配置和通用偏好，
  *   让用户无需编辑 config.json 文件就能调整系统行为。
  *
  * Code Logic:
- *   三个 Apple 风格分组（LLM / TTS / 通用）。
- *   后端配置（LLM / TTS）通过 useConfig hook 读写。
+ *   四个 Apple 风格分组（LLM / ASR / TTS / 通用）。
+ *   后端配置（LLM / ASR / TTS）通过 useConfig hook 读写。
  *   前端独有设置（silence/min_text/alpha/api_priority）通过 useUiSettings 读写。
  *   主题和强调色通过 AppContext 的 setTheme / setAccent 驱动全局 CSS。
  */
@@ -20,6 +20,7 @@ import type { LlmProvider } from '@/api/types'
 import type { Theme } from '@/state/AppContext'
 
 type TtsDeployType = 'local' | 'cloud'
+type AsrDeployType = 'local' | 'cloud'
 
 interface AccentSwatch {
   value: string
@@ -70,7 +71,7 @@ function SegCtlSettings<T extends string>({
 }
 
 export default function SettingsView() {
-  const { config, saving, testLlm, testTts } = useConfig()
+  const { config, saving, testLlm, testTts, testAsr } = useConfig()
   const { settings: uiSettings, update: updateUi } = useUiSettings()
   const { theme, setTheme, accent, setAccent } = useApp()
 
@@ -81,6 +82,13 @@ export default function SettingsView() {
   const [llmModel, setLlmModel] = useState<string>('qwen2.5:7b')
   const [llmStatus, setLlmStatus] = useState<'idle' | 'ok' | 'err'>('idle')
   const [llmTesting, setLlmTesting] = useState<boolean>(false)
+
+  // ASR local state
+  const [asrDeploy, setAsrDeploy] = useState<AsrDeployType>('local')
+  const [asrApiBase, setAsrApiBase] = useState<string>('http://127.0.0.1:9900/v1')
+  const [asrApiKey, setAsrApiKey] = useState<string>('')
+  const [asrStatus, setAsrStatus] = useState<'idle' | 'ok' | 'err'>('idle')
+  const [asrTesting, setAsrTesting] = useState<boolean>(false)
 
   // TTS local state
   const [ttsDeploy, setTtsDeploy] = useState<TtsDeployType>('local')
@@ -99,6 +107,11 @@ export default function SettingsView() {
       setLlmModel(providerCfg.model)
     }
     setTtsDeploy(config.tts.type)
+    if (config.asr) {
+      setAsrDeploy(config.asr.type)
+      setAsrApiBase(config.asr.api_base)
+      setAsrApiKey(config.asr.api_key)
+    }
   }, [config])
 
   const handleThemeChange = useCallback((t: Theme) => {
@@ -122,6 +135,13 @@ export default function SettingsView() {
     setTtsStatus(ok ? 'ok' : 'err')
     setTtsTesting(false)
   }, [testTts])
+
+  const handleTestAsr = useCallback(async () => {
+    setAsrTesting(true)
+    const ok = await testAsr()
+    setAsrStatus(ok ? 'ok' : 'err')
+    setAsrTesting(false)
+  }, [testAsr])
 
   const toggleApiPriority = useCallback(() => {
     updateUi({ api_priority: !uiSettings.api_priority })
@@ -218,6 +238,95 @@ export default function SettingsView() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ASR group */}
+      <div className="settings-group">
+        <div className="settings-group-head">
+          <div className="settings-group-icon asr">
+            <Icon name="transcribe" size={16} />
+          </div>
+          <div>
+            <div className="settings-group-title">语音识别</div>
+            <div className="settings-group-subtitle">音频转写服务（本地 Whisper 或云端 ASR）</div>
+          </div>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">部署方式</div>
+          <div className="settings-value">
+            <SegCtlSettings<AsrDeployType>
+              options={[
+                { value: 'local', label: '本地' },
+                { value: 'cloud', label: '远端' },
+              ]}
+              value={asrDeploy}
+              onChange={setAsrDeploy}
+            />
+          </div>
+          <div />
+        </div>
+
+        {asrDeploy === 'local' ? (
+          <div className="settings-row">
+            <div className="settings-label">
+              本地端口
+              <small>需另开终端启动 asr_service</small>
+            </div>
+            <div className="settings-value mono">127.0.0.1:9900</div>
+            <div>
+              <button
+                className={`btn-test${asrStatus === 'ok' ? ' is-ok' : asrStatus === 'err' ? ' is-err' : ''}`}
+                onClick={handleTestAsr}
+                disabled={asrTesting}
+              >
+                {asrTesting ? '检测中…' : asrStatus === 'ok' ? '服务在线' : '检测'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="settings-row">
+              <div className="settings-label">API Base URL</div>
+              <div className="settings-value">
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={asrApiBase}
+                  placeholder="例如 https://api.openai.com/v1"
+                  disabled={saving}
+                  onChange={(e) => setAsrApiBase(e.target.value)}
+                />
+              </div>
+              <div />
+            </div>
+            <div className="settings-row">
+              <div className="settings-label">
+                API Key
+                <small>云端服务必填</small>
+              </div>
+              <div className="settings-value">
+                <input
+                  type="password"
+                  className="settings-input"
+                  value={asrApiKey}
+                  placeholder="输入 API Key"
+                  disabled={saving}
+                  onChange={(e) => setAsrApiKey(e.target.value)}
+                />
+              </div>
+              <div>
+                <button
+                  className={`btn-test${asrStatus === 'ok' ? ' is-ok' : asrStatus === 'err' ? ' is-err' : ''}`}
+                  onClick={handleTestAsr}
+                  disabled={asrTesting}
+                >
+                  {asrTesting ? '检测中…' : asrStatus === 'ok' ? '已连通' : '测试连通'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* TTS group */}
