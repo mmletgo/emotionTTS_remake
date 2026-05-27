@@ -82,9 +82,10 @@ src/
 4. **顺序播放 useSequentialPlay**：用 ref 跟踪 currentIndex 避免 React 重渲染导致闭包失效
 5. **emo_vector readonly tuple**：后端返回普通 number[]，前端类型是 `readonly [n×8]`，转换写 `as unknown as EmotionVector`（不要 `as number[] as EmotionVector`）
 6. **mock 已全部移除**：所有数据走真 hook；如需开发期假数据，自己在 hook 内 stub 或在 setup mock service worker，**不要在仓库重新引入 mockData**
-7. **BuildCharacterView 的 buildCharOpen 不在 ViewName 里**：App.tsx 用独立 boolean state 控制，不污染 TopNav 的 NAV_ITEMS。buildCharOpen=true 时 TopNav 传 `'__build__'` 使所有 nav 标签非 active
+7. **BuildCharacterView 的 buildCharOpen 不在 ViewName 里**：App.tsx 用独立 boolean state 控制，不污染 TopNav 的 NAV_ITEMS。`TopNav` 的 `activeView` 类型是 `ViewName | null`；buildCharOpen=true 时传 `null` 让三个 tab 都非 active（不要塞一个伪 ViewName 字符串再 `as` 强转）
 8. **ProgressResponse.stage 字段**：后端新增，取值 `'slicing'|'asr'|'tagging'|'writing'|null`。null 表示不区分阶段（append 关闭 LLM 打标时）。前端不要硬编码进度百分比判断 stage，stage 完全由后端字段决定
 9. **AI 重标情绪 vs AI 情绪分析**：useRelabelCharacter（批量后端 LLM）与 useBatchAnalyzeEmotion（前端逐条 analyze_emotion）是两个独立能力，功能相似但实现路径不同，不要合并
+10. **改公共类型契约后必须 `npm run build`，不能只 `npx tsc --noEmit`**：`tsc --noEmit` 走 incremental + 仅检查改动文件的常用模式，会漏掉"改了 `ProgressResponse` 等共享 interface 新增字段后，旧的 `useState<ProgressResponse>({...})` 初始化代码漏了新字段"这种全局缺字段错误；`npm run build`（`tsc -b` + vite build）走完整 project build，能暴露。每次改 api/types 或后端契约后用 build 验证一次
 
 ## 验证
 
