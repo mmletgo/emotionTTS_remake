@@ -494,7 +494,7 @@ export default function SettingsView() {
         <div className="settings-row">
           <div className="settings-label">
             允许 API 模式优先
-            <small>合成时优先使用标记为 API-safe 的素材</small>
+            <small>开启后：素材库内若存在 API-safe 素材，智能匹配仅在该子集中挑选（屏蔽未标记素材）；关闭则使用全部已打标素材</small>
           </div>
           <div className="settings-value" />
           <div>

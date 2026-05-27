@@ -39,6 +39,7 @@ async def match(req: MatchRequest) -> dict:
             req.text,
             llm_cfg,
             manual_emotion=req.manual_emotion,
+            api_priority=req.api_priority,
         )
     except matcher.CharacterNotFound:
         raise HTTPException(status_code=404, detail=f"角色【{req.char_id}】不存在")

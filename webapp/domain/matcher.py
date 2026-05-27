@@ -18,18 +18,27 @@ class EmptyLibrary(Exception):
     """角色存在但素材库未打标或为空。"""
 
 
-def _select_candidate_pool(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _select_candidate_pool(
+    items: list[dict[str, Any]],
+    api_priority: bool = True,
+) -> list[dict[str, Any]]:
     """
     Business Logic（为什么需要这个函数）:
-        匹配候选池有两套优先级：若存在任何 is_api_safe=true 的素材，就只用这批（提高
-        外部 API 调用稳定性）；否则用全部已打标素材。
+        匹配候选池有两套策略：
+        - api_priority=True（默认）：若存在任何 is_api_safe=true 的素材，就只用这批
+          （独占而非加权，提高外部 API 调用稳定性）；safe 子集为空时退回到全集。
+        - api_priority=False：忽略 is_api_safe 标记，直接用全部已打标素材。
+        前端"允许 API 模式优先"开关控制本参数；OpenAI 兼容接口固定 True。
 
     Code Logic（这个函数做什么）:
-        过滤掉未打标（emotion 为空）；再看是否有 is_api_safe 子集，有则取该子集，否则用全集。
+        过滤掉未打标（emotion 为空）；api_priority 关闭则直接返回 valid；开启时若有
+        is_api_safe 子集则取子集，否则退回 valid。
     """
     valid = [i for i in items if i.get("emotion")]
     if not valid:
         return []
+    if not api_priority:
+        return valid
     safe = [i for i in valid if i.get("is_api_safe") is True]
     return safe if safe else valid
 
@@ -67,6 +76,7 @@ async def match_for_text(
     text: str,
     llm_cfg: dict[str, Any],
     manual_emotion: Optional[dict[str, str]] = None,
+    api_priority: bool = True,
 ) -> dict[str, Any]:
     """
     Business Logic（为什么需要这个函数）:
@@ -74,7 +84,8 @@ async def match_for_text(
         最贴合的参考音并附带情绪向量。本函数统一这条主流程。
 
     Code Logic（这个函数做什么）:
-        1) 角色寻址（按目录名或角色名）；2) 选候选池；
+        1) 角色寻址（按目录名或角色名）；2) 选候选池（受 api_priority 控制：True 时
+           is_api_safe 子集存在即独占，False 时忽略该标记用全集）；
         3) 拼 system_prompt，若 manual_emotion 非空则追加锁定指令；
         4) 调 LLM；5) 解析 best_pool_id / emo_vector / emo_alpha；
         6) 若 manual_emotion 非空则强制覆盖 target_emotion（防 LLM 不听话）；
@@ -86,7 +97,7 @@ async def match_for_text(
     char_id, char_name, db = found
 
     items = db.get("items", [])
-    pool = _select_candidate_pool(items)
+    pool = _select_candidate_pool(items, api_priority=api_priority)
     if not pool:
         raise EmptyLibrary(char_id)
 

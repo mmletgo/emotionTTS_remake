@@ -47,6 +47,7 @@ class MatchRequest(BaseModel):
     char_id: str
     text: str
     manual_emotion: Optional[Dict[str, str]] = None
+    api_priority: bool = True  # 前端"允许 API 模式优先"开关；True 时若有 is_api_safe 子集则独占候选池
 
 class SplitTextRequest(BaseModel):
     text: str

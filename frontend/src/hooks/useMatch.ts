@@ -11,6 +11,8 @@ interface MatchInput {
   char_id: string;
   text: string;
   lock?: { primary: string; intensity: string; complex?: string };
+  /** 透传后端"允许 API 模式优先"开关，省略时后端默认 true（保留原有候选池策略） */
+  api_priority?: boolean;
 }
 
 interface UseMatchResult {

@@ -154,6 +154,8 @@ export interface MatchRequest {
     intensity?: string;
     complex?: string;
   };
+  /** 对应设置页"允许 API 模式优先"。true=有 is_api_safe 素材时独占候选池，false=忽略该标记用全集。省略时后端默认 true。 */
+  api_priority?: boolean;
 }
 
 export interface SynthesizeRequest {

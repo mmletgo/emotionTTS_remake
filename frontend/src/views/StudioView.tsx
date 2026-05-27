@@ -28,6 +28,7 @@ import { useLongTextSplit } from '@/hooks/useLongTextSplit'
 import { useCharacterDetail } from '@/hooks/useCharacterDetail'
 import { useSequentialPlay } from '@/hooks/useSequentialPlay'
 import { useMergeOutputs } from '@/hooks/useMergeOutputs'
+import { useUiSettings } from '@/state/uiSettings'
 import { exportSegmentsAsZip } from '@/utils/exportZip'
 
 interface StudioViewProps {
@@ -154,6 +155,7 @@ export default function StudioView({
   const { split: splitFn } = useLongTextSplit()
   const { playing: seqPlaying, currentSegId: seqCurrentId, play: seqPlay, stop: seqStop } = useSequentialPlay()
   const { run: runMerge, loading: mergeLoading } = useMergeOutputs()
+  const { settings: uiSettings } = useUiSettings()
 
   // 加载角色素材库（用于参考音 picker）
   const { items: libraryItems } = useCharacterDetail(activeChar?.char_id ?? '')
@@ -210,6 +212,7 @@ export default function StudioView({
                 complex: singleOverrides.emotion.complex,
               }
             : undefined,
+          api_priority: uiSettings.api_priority,
         })
         const newCache: SegmentLlmCache = {
           text: script,
@@ -407,6 +410,7 @@ export default function StudioView({
                 complex: overrides.emotion.complex,
               }
             : undefined,
+          api_priority: uiSettings.api_priority,
         })
         cache = {
           text: seg.text,
@@ -521,6 +525,7 @@ export default function StudioView({
                 complex: seg.overrides.emotion.complex,
               }
             : undefined,
+          api_priority: uiSettings.api_priority,
         })
         const newCache: SegmentLlmCache = {
           text: seg.text,
@@ -588,6 +593,7 @@ export default function StudioView({
               complex: seg.overrides.emotion.complex,
             }
           : undefined,
+        api_priority: uiSettings.api_priority,
       })
       const newCache: SegmentLlmCache = {
         text: seg.text,
