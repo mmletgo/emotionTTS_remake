@@ -194,6 +194,23 @@ const SPRITE_SVG = `
       <path d="M3 9v3a9 9 0 0 0 9 9 9 9 0 0 0 9-9V9"/>
       <path d="M7 13h3l2-4 2 8 2-4h1"/>
     </symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3a9 9 0 1 0 0 18c1.66 0 3-1.34 3-3v-1.5c0-.83.67-1.5 1.5-1.5H19a3 3 0 0 0 3-3 9 9 0 0 0-10-9z"/>
+      <circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="7" r="1.1" fill="currentColor" stroke="none"/>
+      <circle cx="16.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+    </symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="13" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+    </symbol>
   </defs>
 </svg>
 `
@@ -219,7 +236,7 @@ export type IconName =
   | 'scissors' | 'sequential-play' | 'stop' | 'edit' | 'regenerate'
   | 'trash' | 'merge' | 'library' | 'check' | 'cancel'
   | 'star' | 'star-filled' | 'image' | 'save' | 'chev-left' | 'eraser'
-  | 'transcribe'
+  | 'transcribe' | 'palette' | 'sun' | 'moon' | 'monitor'
 
 interface IconProps {
   name: IconName

@@ -1,0 +1,103 @@
+/* ThemeQuickSwitch — 顶栏右上角颜色主题快捷开关 */
+
+.theme-quick {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-quick__pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  min-width: 240px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, .18));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: theme-quick-in .14s ease-out;
+}
+
+@keyframes theme-quick-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.theme-quick__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  padding: 0 2px;
+}
+
+/* 主题三选项：和 TopNav 的 segment 同款风格 */
+.theme-quick__theme-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.theme-quick__theme-btn {
+  padding: 7px 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: color .15s, background .15s;
+}
+
+.theme-quick__theme-btn svg { opacity: .85; }
+
+.theme-quick__theme-btn[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.theme-quick__theme-btn[aria-pressed="true"] svg { opacity: 1; }
+
+.theme-quick__theme-btn:hover:not([aria-pressed="true"]) {
+  color: var(--ink);
+}
+
+/* 强调色 swatch 行 */
+.theme-quick__swatch-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px;
+}
+
+.theme-quick__sw {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .12s ease, border-color .12s ease;
+}
+
+.theme-quick__sw:hover { transform: scale(1.08); }
+
+.theme-quick__sw[aria-pressed="true"] {
+  border-color: var(--surface);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}

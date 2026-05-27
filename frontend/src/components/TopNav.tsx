@@ -1,14 +1,17 @@
 /**
  * Business Logic:
- *   顶部导航栏，提供三个主页面（工作台/素材库/设置）的切换入口和帮助按钮。
+ *   顶部导航栏，提供三个主页面（工作台/素材库/设置）的切换入口，
+ *   右上角是颜色主题快捷开关（亮/暗/跟随系统 + 5 个强调色），
+ *   省去用户切色时来回跳"设置"页的成本。
  *
  * Code Logic:
- *   Apple HIG 风格半透明 sticky nav，三列网格布局：左侧 brand、中间 segments、右侧 help。
+ *   Apple HIG 风格半透明 sticky nav，三列网格布局：左侧 brand、中间 segments、右侧 ThemeQuickSwitch。
  *   active tab 通过 aria-current="page" 控制高亮样式。
  */
 
 import './TopNav.css'
 import Icon from '../icons/Icon'
+import ThemeQuickSwitch from './ThemeQuickSwitch'
 
 export type ViewName = 'studio' | 'library' | 'settings'
 
@@ -48,9 +51,7 @@ export default function TopNav({ activeView, onViewChange }: TopNavProps) {
       </nav>
 
       <div className="topnav__right">
-        <button className="icon-btn" title="使用提示">
-          <Icon name="help" size={18} />
-        </button>
+        <ThemeQuickSwitch />
       </div>
     </header>
   )

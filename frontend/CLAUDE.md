@@ -26,7 +26,8 @@ src/
 │   ├── LibraryView      # 素材库列表 + 角色详情；新建角色委托 App 打开 BuildCharacterView
 │   ├── SettingsView     # 设置
 │   └── BuildCharacterView  # 独立全屏新建角色视图（四阶段进度 + 完成总览）
-├── components/          # 共享 UI：TopNav / BottomPlayer / Sheet 系
+├── components/          # 共享 UI：TopNav / ThemeQuickSwitch / BottomPlayer / Sheet 系
+│                        #   ThemeQuickSwitch = TopNav 右上角的"颜色主题快捷开关"popover
 │                        #   CharacterFormSheet 现在只有 append 模式（create 迁移到 BuildCharacterView）
 ├── hooks/
 │   ├── useBuildCharacter.ts    # 新建角色进度轮询（含 stage / enableLlmTagging）
@@ -39,7 +40,9 @@ src/
 │   └── client.ts        # 类型化 fetch 封装：ApiError + 每个端点一个 named function
 │                        #   新增 relabelCharacter / createCharacter(enableLlmTagging) / appendToCharacter(enableLlmTagging)
 ├── state/
-│   └── AppContext.tsx   # 全局 theme / accent / activeChar / player
+│   ├── AppContext.tsx   # 全局 theme / accent / activeChar / player
+│   ├── accentSwatches.ts # 强调色色板共享常量（SettingsView + ThemeQuickSwitch 共用）
+│   └── uiSettings.ts    # 前端独有偏好（silence/min_text/alpha/api_priority）
 ├── icons/
 │   └── Icon.tsx         # SVG sprite + <Icon name="..."/>（30+ Apple HIG 风格 line icon）
 ├── styles/
