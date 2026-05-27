@@ -209,6 +209,52 @@
   to { transform: rotate(360deg); }
 }
 
+/* Toggle 开关（AI 情绪打标） */
+.form-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 99px;
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+}
+
+.form-toggle--on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.form-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.form-toggle--on .form-toggle-thumb {
+  transform: translateX(16px);
+  background: white;
+}
+
+.form-toggle-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 /* Shared icon-btn */
 .icon-btn {
   width: 32px;

@@ -10,7 +10,7 @@
  *   点击"保存更改"时批量提交。全部 sheet/popover 浮层通过局部 state 控制开关。
  */
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import './LibraryView.css'
 import Icon from '../icons/Icon'
 import type { Character, EmotionIntensity, EmotionPrimary, LibraryItem } from '@/api/types'
@@ -22,6 +22,7 @@ import { useUpdateItems } from '@/hooks/useUpdateItems'
 import { useMergeItems } from '@/hooks/useMergeItems'
 import { useDeleteItem } from '@/hooks/useDeleteItem'
 import { useBatchAnalyzeEmotion } from '@/hooks/useBatchAnalyzeEmotion'
+import { useRelabelCharacter } from '@/hooks/useRelabelCharacter'
 import { exportCharacterUrl, importCharacter, updateAvatar } from '@/api/client'
 import CharacterFormSheet from '../components/CharacterFormSheet'
 import RenameSheet from '../components/RenameSheet'
@@ -301,6 +302,7 @@ function CharDetailInner({
   const { merge, loading: merging } = useMergeItems()
   const { remove: removeItem } = useDeleteItem()
   const { analyze, state: analyzeState } = useBatchAnalyzeEmotion()
+  const { relabel, state: relabelState, reset: resetRelabel } = useRelabelCharacter()
 
   // 每次 items 变化时，合并进 editStates（已修改的保留，新的用后端值初始化）
   const getEditState = useCallback((item: LibraryItem): ItemEditState => {
@@ -487,6 +489,17 @@ function CharDetailInner({
     })
   }, [analyzeState.running, analyze, char.char_id, items, handleItemAnalyzed])
 
+  // ---- AI 重标情绪 ----
+  const handleRelabel = useCallback(() => {
+    if (relabelState.status === 'running' && !relabelState.done) return
+    resetRelabel()
+    relabel({ charId: char.char_id }).then(() => {
+      onRefresh()
+    }).catch((err) => {
+      alert('AI 重标失败：' + (err instanceof Error ? err.message : String(err)))
+    })
+  }, [relabelState.status, relabelState.done, resetRelabel, relabel, char.char_id, onRefresh])
+
   const hasChanges = editStates.size > 0
 
   return (
@@ -581,6 +594,17 @@ function CharDetailInner({
               ? `分析中 ${analyzeState.processed}/${analyzeState.total}...`
               : 'AI 情绪分析'}
           </button>
+          <button
+            className={`btn-chip${relabelState.status === 'running' && !relabelState.done ? ' btn-chip--running' : ''}`}
+            onClick={handleRelabel}
+            disabled={relabelState.status === 'running' && !relabelState.done}
+            title="批量重跑 LLM 情绪打标（全量素材）"
+          >
+            <Icon name="refresh" size={13} />
+            {relabelState.status === 'running' && !relabelState.done
+              ? `重标中 ${relabelState.progress}%...`
+              : 'AI 重标情绪'}
+          </button>
         </div>
       </div>
 
@@ -595,6 +619,21 @@ function CharDetailInner({
           </div>
           <span className={`detail-analyze-msg${analyzeState.error ? ' is-error' : ''}`}>
             {analyzeState.error ?? analyzeState.msg}
+          </span>
+        </div>
+      )}
+
+      {/* AI 重标进度 */}
+      {(relabelState.status === 'running' && !relabelState.done || relabelState.done) && (
+        <div className="detail-analyze-bar">
+          <div className="detail-analyze-progress">
+            <div
+              className="detail-analyze-fill"
+              style={{ width: `${relabelState.progress}%` }}
+            />
+          </div>
+          <span className={`detail-analyze-msg${relabelState.error ? ' is-error' : ''}`}>
+            {relabelState.error ?? relabelState.msg}
           </span>
         </div>
       )}
@@ -683,7 +722,6 @@ function CharDetailInner({
       {/* Append Sheet */}
       <CharacterFormSheet
         open={appendOpen}
-        mode="append"
         charId={char.char_id}
         onClose={() => setAppendOpen(false)}
         onDone={() => { setAppendOpen(false); onRefresh(); onCharRefresh() }}
@@ -724,16 +762,19 @@ function CharDetailLoader({ char, onBack, onCharRefresh }: CharDetailLoaderProps
 interface LibraryViewProps {
   characters: Character[]
   onCharChange?: (c: Character) => void
+  /** 点击"新建角色"时的回调，由 App 层负责打开 BuildCharacterView */
+  onBuildChar?: () => void
+  /** 新建角色完成后传入 charId，跳转到该角色详情 */
+  newCharId?: string | null
 }
 
-export default function LibraryView({ characters: _characters }: LibraryViewProps) {
+export default function LibraryView({ characters: _characters, onBuildChar, newCharId }: LibraryViewProps) {
   // 使用内部 useCharacters 以支持刷新（props 中的 characters 是只读快照）
   const { data: characters, refresh: refreshChars } = useCharacters()
   const [query, setQuery] = useState<string>('')
   const [detailChar, setDetailChar] = useState<Character | null>(null)
 
   // Sheets
-  const [createOpen, setCreateOpen] = useState<boolean>(false)
   const [renameTarget, setRenameTarget] = useState<Character | null>(null)
 
   const { remove: removeChar } = useDeleteCharacter()
@@ -788,18 +829,22 @@ export default function LibraryView({ characters: _characters }: LibraryViewProp
     }
   }, [refreshChars])
 
-  const handleCreateDone = useCallback((newCharId?: string) => {
-    setCreateOpen(false)
+  // 当 App 层通知新建完成（newCharId 从外部传入）时跳转到该角色详情。
+  // 拆成两个 effect：第一个触发刷新列表；第二个等 characters 更新后定位新角色。
+  // 用 ref 记录已处理过的 newCharId，避免重复跳转。
+  const lastHandledCharIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!newCharId || lastHandledCharIdRef.current === newCharId) return
     refreshChars()
-    if (newCharId) {
-      // 跳转到新角色详情：等待列表刷新后再找到这个角色
-      // 由于 refreshChars 是异步的，用 setTimeout 做简单延迟
-      setTimeout(() => {
-        const found = characters.find((c) => c.char_id === newCharId)
-        if (found) setDetailChar(found)
-      }, 500)
+  }, [newCharId, refreshChars])
+  useEffect(() => {
+    if (!newCharId || lastHandledCharIdRef.current === newCharId) return
+    const found = characters.find((c) => c.char_id === newCharId)
+    if (found) {
+      setDetailChar(found)
+      lastHandledCharIdRef.current = newCharId
     }
-  }, [refreshChars, characters])
+  }, [newCharId, characters])
 
   void avatarInputsRef // 避免 unused warning
 
@@ -829,7 +874,7 @@ export default function LibraryView({ characters: _characters }: LibraryViewProp
             style={{ display: 'none' }}
             onChange={handleImport}
           />
-          <button className="btn-primary" onClick={() => setCreateOpen(true)}>
+          <button className="btn-primary" onClick={() => onBuildChar?.()}>
             <Icon name="plus" size={14} /> 新建角色
           </button>
         </div>
@@ -853,14 +898,6 @@ export default function LibraryView({ characters: _characters }: LibraryViewProp
         onDelete={handleDelete}
         onExport={handleExport}
         onUploadAvatar={handleUploadAvatar}
-      />
-
-      {/* 新建角色 Sheet */}
-      <CharacterFormSheet
-        open={createOpen}
-        mode="create"
-        onClose={() => setCreateOpen(false)}
-        onDone={handleCreateDone}
       />
 
       {/* 重命名 Sheet */}

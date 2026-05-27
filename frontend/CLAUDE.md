@@ -18,14 +18,26 @@ npx tsc --noEmit          # 类型检查（应为 0 errors）
 
 ```
 src/
-├── App.tsx              # 根：TopNav + 当前 view + BottomPlayer + AppProvider
+├── App.tsx              # 根：TopNav + 视图切换 + BottomPlayer + AppProvider
+│                        #   buildCharOpen 布尔控制 BuildCharacterView 全屏覆盖
 ├── main.tsx             # createRoot + AppProvider 包裹
-├── views/               # 三个顶层 view：Studio (单句+长文本) / Library / Settings
-├── components/          # 共享 UI：TopNav / BottomPlayer / Sheet 系（Cast/Reference/Advanced/Character/Rename/ManualSplit/EmotionEditPopover）
-├── hooks/               # 业务 hook 一个文件一个：useCharacters / useMatch / useSynthesize / useLongTextSplit / useBuildCharacter (含轮询) / useSequentialPlay / useMergeOutputs / ...
+├── views/
+│   ├── StudioView       # 工作台（单句 + 长文本）
+│   ├── LibraryView      # 素材库列表 + 角色详情；新建角色委托 App 打开 BuildCharacterView
+│   ├── SettingsView     # 设置
+│   └── BuildCharacterView  # 独立全屏新建角色视图（四阶段进度 + 完成总览）
+├── components/          # 共享 UI：TopNav / BottomPlayer / Sheet 系
+│                        #   CharacterFormSheet 现在只有 append 模式（create 迁移到 BuildCharacterView）
+├── hooks/
+│   ├── useBuildCharacter.ts    # 新建角色进度轮询（含 stage / enableLlmTagging）
+│   ├── useAppendCharacter.ts   # 追加音频进度轮询（含 stage / enableLlmTagging）
+│   ├── useRelabelCharacter.ts  # AI 批量重标情绪（调用 /relabel 端点 + 进度轮询）
+│   └── ...其他 hook
 ├── api/
 │   ├── types.ts         # 全部 API 实体 + 请求/响应 interface
+│   │                    #   ProgressResponse.stage: 'slicing'|'asr'|'tagging'|'writing'|null
 │   └── client.ts        # 类型化 fetch 封装：ApiError + 每个端点一个 named function
+│                        #   新增 relabelCharacter / createCharacter(enableLlmTagging) / appendToCharacter(enableLlmTagging)
 ├── state/
 │   └── AppContext.tsx   # 全局 theme / accent / activeChar / player
 ├── icons/
@@ -35,6 +47,12 @@ src/
 │   └── base.css         # reset + .main 容器
 └── utils/               # avatar / exportZip (JSZip) / longText 类型 等纯函数
 ```
+
+### 新建角色 vs 追加音频的设计取舍
+
+- **新建角色** → `BuildCharacterView`（独立全屏）：流程复杂（配置 + 四阶段进度 + 完成总览），需要大展示空间
+- **追加音频** → `CharacterFormSheet`（Sheet 抽屉）：轻量操作，在角色详情页内完成即可，不需要离开当前页面
+- `CharacterFormSheet` 已删除 `mode="create"` 路径，只保留 append；`CharacterFormMode` 类型已移除
 
 ## 三层分工约定（与后端 api/domain/clients 对应）
 
@@ -61,6 +79,9 @@ src/
 4. **顺序播放 useSequentialPlay**：用 ref 跟踪 currentIndex 避免 React 重渲染导致闭包失效
 5. **emo_vector readonly tuple**：后端返回普通 number[]，前端类型是 `readonly [n×8]`，转换写 `as unknown as EmotionVector`（不要 `as number[] as EmotionVector`）
 6. **mock 已全部移除**：所有数据走真 hook；如需开发期假数据，自己在 hook 内 stub 或在 setup mock service worker，**不要在仓库重新引入 mockData**
+7. **BuildCharacterView 的 buildCharOpen 不在 ViewName 里**：App.tsx 用独立 boolean state 控制，不污染 TopNav 的 NAV_ITEMS。buildCharOpen=true 时 TopNav 传 `'__build__'` 使所有 nav 标签非 active
+8. **ProgressResponse.stage 字段**：后端新增，取值 `'slicing'|'asr'|'tagging'|'writing'|null`。null 表示不区分阶段（append 关闭 LLM 打标时）。前端不要硬编码进度百分比判断 stage，stage 完全由后端字段决定
+9. **AI 重标情绪 vs AI 情绪分析**：useRelabelCharacter（批量后端 LLM）与 useBatchAnalyzeEmotion（前端逐条 analyze_emotion）是两个独立能力，功能相似但实现路径不同，不要合并
 
 ## 验证
 

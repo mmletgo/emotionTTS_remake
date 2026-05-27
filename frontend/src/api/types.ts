@@ -91,6 +91,8 @@ export interface ProgressResponse {
   progress: number;   // 0-100
   msg: string;
   status: TaskStatus;
+  /** 当前阶段，由后端字段决定，前端只用于可视化分类 */
+  stage: 'slicing' | 'asr' | 'tagging' | 'writing' | null;
 }
 
 // ============================================================

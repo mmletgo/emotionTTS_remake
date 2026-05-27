@@ -12,6 +12,8 @@ interface BuildInput {
   audioFiles: File[];
   avatar?: File;
   minSilenceLen?: number;
+  /** 是否启用 LLM 情绪打标，默认 true（向后兼容） */
+  enableLlmTagging?: boolean;
 }
 
 interface BuildState {
@@ -19,6 +21,8 @@ interface BuildState {
   progress: number;
   msg: string;
   status: TaskStatus;
+  /** 当前处理阶段，来自后端 stage 字段 */
+  stage: 'slicing' | 'asr' | 'tagging' | 'writing' | null;
   done: boolean;
   error: string | null;
 }
@@ -34,6 +38,7 @@ const INITIAL: BuildState = {
   progress: 0,
   msg: '',
   status: 'running',
+  stage: null,
   done: false,
   error: null,
 };
@@ -52,6 +57,7 @@ export function useBuildCharacter(): UseBuildCharacterResult {
       const res = await createCharacter(input.charName, input.audioFiles, {
         avatar: input.avatar,
         minSilenceLen: input.minSilenceLen,
+        enableLlmTagging: input.enableLlmTagging,
       });
       charId = res.char_id;
       setState((prev) => ({ ...prev, charId, msg: '正在处理...' }));
@@ -76,6 +82,7 @@ export function useBuildCharacter(): UseBuildCharacterResult {
               progress: res.progress,
               msg: res.msg,
               status: res.status,
+              stage: res.stage,
               done: res.status !== 'running',
             }));
             if (res.status === 'running') {

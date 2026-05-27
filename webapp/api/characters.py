@@ -1,5 +1,5 @@
 """
-角色与素材库相关的 HTTP 接口（薄壳）：列表 / 详情 / CRUD / 头像 / 导入导出 / items 编辑 / 进度查询。
+角色与素材库相关的 HTTP 接口（薄壳）：列表 / 详情 / CRUD / 头像 / 导入导出 / items 编辑 / 进度查询 / 情绪重标。
 
 所有真正的文件 I/O、业务规则都在 webapp.domain.characters / library_editor / library_builder 里；
 本模块只做 HTTP 协议适配。
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from webapp.api._progress import get as get_progress, make_updater
 from webapp.domain import characters as char_repo
 from webapp.domain import library_editor
+from webapp.domain.emotion_tagger import EmotionTaggerError
 from webapp.domain.library_builder import (
     append_character_dataset,
     build_character_dataset,
@@ -28,6 +29,15 @@ router = APIRouter(tags=["Characters"])
 
 class RenameRequest(BaseModel):
     new_name: str
+
+
+class RelabelRequest(BaseModel):
+    """
+    Business Logic（为什么需要这个模型）:
+        POST /api/characters/{char_id}/relabel 端点需要接受可选的 item_ids 列表，
+        null 或缺省表示对全量素材重标。
+    """
+    item_ids: Optional[List[int]] = None
 
 
 # ---------- 列表 / 详情 / 删除 / 改名 ----------
@@ -72,6 +82,7 @@ async def create_character(
     background_tasks: BackgroundTasks,
     char_name: str = Form(...),
     min_silence_len: float = Form(0.8),
+    enable_llm_tagging: bool = Form(True),
     avatar: Optional[UploadFile] = File(None),
     files: List[UploadFile] = File(...),
 ) -> dict:
@@ -82,7 +93,9 @@ async def create_character(
     updater = make_updater(char_id)
     updater(0, "正在读取音频...")
     background_tasks.add_task(
-        build_character_dataset, char_id, char_name, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater
+        build_character_dataset,
+        char_id, char_name, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater,
+        enable_llm_tagging,
     )
     return {"status": "success", "char_id": char_id}
 
@@ -92,6 +105,7 @@ async def append_to_character(
     char_id: str,
     background_tasks: BackgroundTasks,
     min_silence_len: float = Form(0.8),
+    enable_llm_tagging: bool = Form(True),
     files: List[UploadFile] = File(...),
 ) -> dict:
     try:
@@ -103,9 +117,41 @@ async def append_to_character(
     updater = make_updater(task_id)
     updater(0, "正在读取补充音频...")
     background_tasks.add_task(
-        append_character_dataset, char_id, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater
+        append_character_dataset,
+        char_id, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater,
+        enable_llm_tagging,
     )
     return {"status": "success"}
+
+
+@router.post("/api/characters/{char_id}/relabel")
+async def relabel_character_emotions(
+    char_id: str,
+    background_tasks: BackgroundTasks,
+    req: Optional[RelabelRequest] = None,
+) -> dict:
+    """
+    对角色素材库中的已有 items 重新跑 LLM 情绪打标。
+    可选 body: {"item_ids": [int, ...] | null}，null/缺省表示全量重标。
+    进度通过 GET /api/progress/{task_id} 查询，task_id = "{char_id}_relabel"。
+    """
+    item_ids: Optional[List[int]] = req.item_ids if req is not None else None
+    task_id = f"{char_id}_relabel"
+    updater = make_updater(task_id)
+    updater(0, "正在启动情绪重标任务...", stage="tagging")
+
+    def _run_relabel() -> None:
+        try:
+            library_editor.relabel_emotions_logic(char_id, item_ids, updater)
+        except EmotionTaggerError as e:
+            updater(0, f"❌ LLM 配置不可用: {e}", status="error")
+        except FileNotFoundError as e:
+            updater(0, f"❌ 找不到角色: {e}", status="error")
+        except Exception as e:
+            updater(0, f"❌ 重标失败: {e}", status="error")
+
+    background_tasks.add_task(_run_relabel)
+    return {"status": "success", "task_id": task_id}
 
 
 @router.post("/api/characters/{char_id}/avatar")
