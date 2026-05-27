@@ -1,0 +1,89 @@
+/* BottomPlayer — 网易云风格底部 mini player */
+.player {
+  display: grid;
+  grid-template-columns: 1fr 380px 1fr;
+  align-items: center;
+  padding: 0 24px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--line);
+}
+
+.player.is-idle .player__now,
+.player.is-idle .player__progress,
+.player.is-idle .player__actions { opacity: .4; pointer-events: none; }
+
+.player__now { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.player__cover {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
+  display: grid; place-items: center;
+  font-size: 16px; font-weight: 600; color: white;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+
+.player__info { display: flex; flex-direction: column; min-width: 0; }
+.player__title {
+  font-size: 14px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.player__sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+.player__progress {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+
+.player__controls { display: flex; align-items: center; gap: 12px; }
+
+.player__controls .icon-btn { width: 28px; height: 28px; }
+
+.player__controls .icon-btn--play {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--ink); color: var(--bg);
+}
+.player__controls .icon-btn--play:hover { background: var(--accent); color: var(--accent-ink); }
+
+.player__bar {
+  display: grid; grid-template-columns: 36px 1fr 36px; gap: 8px;
+  align-items: center; width: 100%;
+}
+
+.player__bar .time {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); text-align: center;
+}
+
+.player__track {
+  height: 4px; border-radius: 2px;
+  background: var(--line); position: relative;
+  cursor: pointer;
+}
+
+.player__fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.player__knob {
+  position: absolute; top: 50%;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.player__actions { display: flex; justify-content: flex-end; gap: 4px; }
+
+@media (max-width: 720px) {
+  .player {
+    grid-template-columns: 1fr auto;
+    padding: 0 12px;
+  }
+  .player__progress { display: none; }
+  .player__actions { display: none; }
+}

@@ -20,14 +20,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 alias emotts-py=/Users/hans/repos/index-tts/.venv/bin/python
 
-# 1) Web 中枢（端口 9880）
+# 1) Web 中枢（端口 9880）—— serve frontend build 产物 + 所有 API
 emotts-py main.py
 
 # 2) IndexTTS2 推理服务（端口 9800，另开终端）
 INDEXTTS_MODEL_DIR=/Users/hans/repos/index-tts/checkpoints emotts-py tts_service/server.py
+
+# 3) 前端开发模式（可选，5173，HMR）
+cd frontend && npm install && npm run dev
+# Vite proxy 把 /api /v1 /outputs /characters 转发到 9880
+# 改完打包：npm run build → 产物输出到 webapp/frontend/
 ```
 
-只走远端 LLM 时不需要起 9800；要用本地 TTS 才需要。
+只走远端 LLM 时不需要起 9800；要用本地 TTS 才需要。前端日常修改走 `npm run dev`，发布前 `npm run build` 把产物提交进 `webapp/frontend/`。
 
 **没有测试套件**，没有 lint 配置。验证方式：浏览器打开 `http://127.0.0.1:9880/` 走通「创建角色 → 匹配 → 合成」三条主链路。Pyright 检查：`pyright`（仓库根，使用根目录的 `pyrightconfig.json`，应为 0 errors）。
 
@@ -48,7 +53,11 @@ emotionTTS_v4.5/
 │   ├── clients/                     # 外部 HTTP 客户端（详见 webapp/clients/CLAUDE.md）
 │   ├── schemas/api_models.py        # Pydantic 请求体
 │   ├── prompts/system_prompts.py    # LLM system prompt 集中管理
-│   └── frontend/                    # 原生 HTML/CSS/JS 单页
+│   └── frontend/                    # Vite + React SPA 构建产物（index.html + assets/，入库）
+├── frontend/                        # ── React 源码（详见 frontend/CLAUDE.md）
+│   ├── src/{views,components,hooks,api,state,icons,styles,utils}
+│   ├── vite.config.ts               # dev proxy → :9880；build outDir → ../webapp/frontend
+│   └── package.json                 # Vite 8 + React 18 + TypeScript 5（无运行时框架依赖）
 ├── tts_service/                     # ── 本地 IndexTTS2 推理服务（9800）
 │   └── server.py                    # 依赖用户 indextts env 内的 indextts 包
 ├── characters/{char_id}/            # 数据：角色目录（library.json + voice_lib/ + avatar.*）
@@ -68,7 +77,7 @@ emotionTTS_v4.5/
 8. **API 白名单优先**：智能匹配候选池由 `domain/matcher._select_candidate_pool` 决定——只要存在 `is_api_safe=true` 的素材，就只用这批；否则用全集。合并/切分产生的新 item `is_api_safe` 始终 false（不继承）。
 9. **导入角色 ZIP 时强制刷新 char_id**：`domain.characters.import_zip` 会把新 `library.json.char_id` 强制等于新目录名；不要去掉这步，否则历史包内的不一致会污染新数据。
 10. **`tts_service/server.py` 启动时清 uploads/**：`_clear_stale_uploads()` 在 `_init_engine` 前调用，处理上次崩溃残留；不要乱改顺序。
-11. **前端禁缓存靠时间戳**：`webapp/app.py` 把所有 `.js` / `.css` 引用替换为 `?t={timestamp}`。
+11. **前端为 Vite + React SPA**：`webapp/app.py` 直接 serve `webapp/frontend/index.html`（Vite 输出，asset 带 hash 无需时间戳）；`/assets/*` 挂 StaticFiles；所有非 API 路径回退到 index.html（SPA history 模式 fallback）。构建前根路由返回友好提示页而非 500。
 12. **`outputs/` 永不自动清理**：有意为之（详见 PRD 5.6），用户自管。
 13. **ffmpeg 信任系统 PATH**：不再绑内置 ffmpeg；用户需自行 `brew install ffmpeg`。
 

@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EmotionTTS · v0 Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root[data-theme="light"] {
+  --bg:             oklch(98% 0.003 80);
+  --surface:        oklch(100% 0 0);
+  --surface-2:      oklch(96% 0.005 80);
+  --surface-glass:  oklch(100% 0 0 / .72);
+  --hover:          oklch(95% 0.006 80);
+
+  --line:           oklch(91% 0.005 70);
+  --line-strong:    oklch(82% 0.008 70);
+
+  --ink:            oklch(20% 0.012 60);
+  --ink-2:          oklch(42% 0.010 60);
+  --ink-3:          oklch(60% 0.008 60);
+  --ink-disabled:   oklch(78% 0.006 60);
+
+  --accent:         oklch(64% 0.20 38);
+  --accent-soft:    oklch(64% 0.20 38 / .10);
+  --accent-strong:  oklch(58% 0.22 38);
+  --accent-ink:     oklch(100% 0 0);
+
+  --signal-ok:      oklch(60% 0.16 145);
+  --signal-warn:    oklch(70% 0.16 75);
+  --signal-err:     oklch(58% 0.22 25);
+
+  --shadow-sm: 0 1px 2px rgba(15, 18, 22, .04), 0 1px 1px rgba(15, 18, 22, .03);
+  --shadow-md: 0 4px 12px -2px rgba(15, 18, 22, .06), 0 2px 4px rgba(15, 18, 22, .04);
+  --shadow-lg: 0 18px 48px -12px rgba(15, 18, 22, .12), 0 6px 16px -8px rgba(15, 18, 22, .08);
+  --shadow-glass: 0 1px 0 rgba(255,255,255,.6) inset, 0 18px 48px -16px rgba(15, 18, 22, .15);
+}
+
+:root[data-theme="dark"] {
+  --bg:             oklch(14% 0.008 50);
+  --surface:        oklch(18% 0.010 50);
+  --surface-2:      oklch(22% 0.012 50);
+  --surface-glass:  oklch(18% 0.010 50 / .72);
+  --hover:          oklch(24% 0.012 50);
+
+  --line:           oklch(28% 0.010 50);
+  --line-strong:    oklch(38% 0.012 50);
+
+  --ink:            oklch(96% 0.004 80);
+  --ink-2:          oklch(76% 0.008 70);
+  --ink-3:          oklch(58% 0.010 70);
+  --ink-disabled:   oklch(40% 0.008 70);
+
+  --accent:         oklch(72% 0.18 42);
+  --accent-soft:    oklch(72% 0.18 42 / .16);
+  --accent-strong:  oklch(78% 0.20 42);
+  --accent-ink:     oklch(15% 0.01 50);
+
+  --signal-ok:      oklch(72% 0.17 145);
+  --signal-warn:    oklch(80% 0.16 80);
+  --signal-err:     oklch(64% 0.22 25);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 8px 24px -8px rgba(0,0,0,.5);
+  --shadow-lg: 0 24px 64px -12px rgba(0,0,0,.6);
+  --shadow-glass: 0 1px 0 rgba(255,255,255,.04) inset, 0 24px 64px -16px rgba(0,0,0,.7);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+  transition: background .3s ease, color .3s ease;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
+input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+.mono { font-family: "SF Mono", ui-monospace, "Menlo", monospace; font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   ICONS — inline SVG, line style, 1.5px stroke
+   ============================================================ */
+.i { width: 18px; height: 18px; flex-shrink: 0; display: inline-block; vertical-align: -3px; }
+.i-sm { width: 14px; height: 14px; }
+.i-lg { width: 22px; height: 22px; }
+
+/* ============================================================
+   APP SHELL — Apple-style nav + content + bottom player
+   ============================================================ */
+.app {
+  display: grid;
+  grid-template-rows: 52px 1fr 72px;
+  min-height: 100vh;
+}
+
+/* TOP NAV */
+.topnav {
+  position: sticky; top: 0; z-index: 50;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 0 24px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+}
+.brand-dot {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  display: grid; place-items: center;
+  color: var(--accent-ink); font-size: 11px; font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-segments {
+  display: flex; gap: 2px;
+  padding: 3px; border-radius: 10px;
+  background: var(--surface-2);
+}
+.nav-seg {
+  padding: 6px 16px; border-radius: 7px;
+  font-size: 13px; font-weight: 500; color: var(--ink-2);
+  transition: color .18s ease, background .18s ease;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.nav-seg .i { opacity: .8; }
+.nav-seg[aria-current="page"] .i { opacity: 1; }
+.nav-seg[aria-current="page"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm);
+}
+.nav-seg:hover:not([aria-current="page"]) { color: var(--ink); }
+
+.nav-right { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: grid; place-items: center; color: var(--ink-2);
+  transition: background .15s, color .15s;
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+
+/* MAIN */
+.main {
+  width: 100%; max-width: 760px; margin: 0 auto;
+  padding: 40px 24px 24px;
+  display: flex; flex-direction: column;
+}
+
+/* ============================================================
+   VIEW: STUDIO (Workbench — guided 1-2-3)
+   ============================================================ */
+.view { display: none; }
+.view.is-active { display: block; animation: fade-in .32s ease; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Studio mode tabs (single sentence / long text) */
+.studio-mode {
+  display: inline-flex; padding: 4px;
+  background: var(--surface-2); border-radius: 12px;
+  margin-bottom: 28px;
+}
+.studio-mode button {
+  padding: 8px 18px; border-radius: 9px;
+  font-size: 13px; font-weight: 500; color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.studio-mode button[aria-current="page"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm);
+}
+
+/* Step block */
+.step {
+  margin-bottom: 28px;
+  animation: rise .4s ease both;
+}
+.step:nth-child(2) { animation-delay: .04s; }
+.step:nth-child(3) { animation-delay: .08s; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.step-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface-2); color: var(--ink-2);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600;
+  font-family: "SF Mono", monospace;
+}
+.step.is-done .step-num { background: var(--accent); color: var(--accent-ink); }
+.step-title { font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+.step-hint { color: var(--ink-3); font-size: 13px; margin-left: 6px; }
+
+/* Cast picker card (Step 1) */
+.cast-card {
+  display: grid; grid-template-columns: 64px 1fr auto; gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color .18s, box-shadow .18s, transform .18s;
+}
+.cast-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+.cast-avatar {
+  width: 64px; height: 64px; border-radius: 16px;
+  background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
+  display: grid; place-items: center;
+  font-size: 24px; font-weight: 600; color: white;
+  box-shadow: var(--shadow-sm);
+}
+.cast-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cast-name { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.cast-sub { font-size: 13px; color: var(--ink-3); }
+.cast-actions { display: flex; gap: 6px; }
+.btn-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface-2); display: grid; place-items: center;
+  color: var(--ink-2);
+  transition: background .15s, color .15s, transform .15s;
+}
+.btn-icon:hover { background: var(--accent-soft); color: var(--accent); }
+.btn-icon:active { transform: scale(.94); }
+.btn-icon.is-playing { background: var(--accent); color: var(--accent-ink); }
+
+/* Script input (Step 2) */
+.script-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: border-color .18s, box-shadow .18s;
+}
+.script-card:focus-within { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+.script-card textarea {
+  width: 100%;
+  padding: 20px 22px;
+  background: none; border: none; outline: none; resize: none;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+  min-height: 140px;
+}
+.script-card textarea::placeholder { color: var(--ink-3); }
+.script-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.script-foot .left { font-size: 12px; color: var(--ink-3); }
+.script-foot .count { font-family: "SF Mono", monospace; }
+.script-foot .count strong { color: var(--ink); }
+
+/* Step 3: action zone */
+.action-zone {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 8px 0 4px;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 36px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: var(--accent-ink);
+  font-size: 16px; font-weight: 600;
+  letter-spacing: -0.005em;
+  box-shadow: 0 8px 20px -6px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,.2);
+  transition: transform .15s cubic-bezier(.32,.72,0,1), box-shadow .15s;
+  min-width: 240px;
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 28px -6px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,.2); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary .glyph {
+  width: 18px; height: 18px;
+  display: inline-grid; place-items: center;
+}
+
+.advanced-link {
+  font-size: 13px; color: var(--ink-3);
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color .15s;
+}
+.advanced-link:hover { color: var(--accent); }
+.advanced-link::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-3);
+  transition: background .15s;
+}
+.advanced-link:hover::before { background: var(--accent); }
+
+/* Diagnosis preview (after AI run) */
+.diag-preview {
+  margin-top: 22px;
+  padding: 18px 20px;
+  background: var(--accent-soft);
+  border-radius: 16px;
+  display: flex; align-items: flex-start; gap: 14px;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+}
+.diag-preview .icon {
+  flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center;
+  font-size: 14px; font-weight: 700;
+}
+.diag-preview .text { flex: 1; }
+.diag-preview .label { font-size: 12px; color: var(--accent-strong); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.diag-preview .body { margin-top: 4px; font-size: 14px; color: var(--ink); line-height: 1.55; }
+.diag-preview .body strong { font-weight: 600; }
+.diag-preview .body .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; vertical-align: middle; margin: 0 4px 1px 0; }
+
+/* ============================================================
+   LONG-TEXT MODE — different layout
+   ============================================================ */
+.longtext-setup {
+  display: grid; gap: 12px; margin-bottom: 20px;
+}
+.longtext-toolbar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.btn-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px; color: var(--ink-2); font-weight: 500;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.btn-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+
+.seg-list {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 18px;
+}
+.seg-item {
+  display: grid; grid-template-columns: 28px 24px 1fr auto auto; gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.seg-item:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+.seg-item.is-done { background: color-mix(in oklch, var(--signal-ok) 5%, var(--surface)); }
+.seg-num { font-family: "SF Mono", monospace; font-size: 12px; color: var(--ink-3); text-align: center; }
+.seg-check {
+  appearance: none;
+  width: 18px; height: 18px; border-radius: 5px;
+  border: 1.5px solid var(--line-strong);
+  cursor: pointer; position: relative;
+  transition: background .15s, border-color .15s;
+}
+.seg-check:checked { background: var(--accent); border-color: var(--accent); }
+.seg-check:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px;
+  width: 5px; height: 9px;
+  border-right: 2px solid white; border-bottom: 2px solid white;
+  transform: rotate(45deg);
+}
+.seg-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+.seg-status {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-3);
+}
+.seg-status.is-ok { background: color-mix(in oklch, var(--signal-ok) 14%, transparent); color: var(--signal-ok); }
+.seg-status.is-pending { background: color-mix(in oklch, var(--signal-warn) 14%, transparent); color: var(--signal-warn); }
+
+.batch-bar {
+  position: sticky; top: 56px; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(20px);
+          backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+.batch-bar .left { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--ink-2); }
+.batch-bar .right { display: flex; gap: 6px; }
+
+/* ============================================================
+   VIEW: LIBRARY
+   ============================================================ */
+.lib-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 22px;
+}
+.lib-title { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.lib-tools { display: flex; gap: 8px; }
+
+.lib-search {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border-radius: 12px;
+  margin-bottom: 22px;
+}
+.lib-search .i { vertical-align: middle; }
+.lib-search input { flex: 1; background: none; border: none; outline: none; font-size: 14px; }
+
+.lib-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 18px;
+}
+.lib-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer;
+  transition: transform .2s cubic-bezier(.32,.72,0,1), box-shadow .2s, border-color .15s;
+}
+.lib-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--line-strong); }
+.lib-card-avatar {
+  width: 96px; height: 96px; border-radius: 22px;
+  display: grid; place-items: center;
+  font-size: 38px; font-weight: 600; color: white;
+  background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
+  box-shadow: var(--shadow-sm);
+}
+.lib-card-name { font-size: 15px; font-weight: 600; }
+.lib-card-meta { font-size: 12px; color: var(--ink-3); font-family: "SF Mono", monospace; }
+
+/* ============================================================
+   VIEW: SETTINGS (Apple style grouped list)
+   ============================================================ */
+.settings-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 22px;
+}
+.settings-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin-bottom: 22px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.settings-group-head {
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+}
+.settings-group-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+.settings-group-icon .i { color: white; }
+.settings-group-icon.llm { background: linear-gradient(135deg, oklch(62% 0.16 250), oklch(48% 0.12 250)); }
+.settings-group-icon.tts { background: linear-gradient(135deg, oklch(64% 0.16 30), oklch(48% 0.12 30)); }
+.settings-group-icon.gen { background: linear-gradient(135deg, oklch(60% 0.12 200), oklch(46% 0.10 200)); }
+.settings-group-title { font-size: 15px; font-weight: 600; }
+.settings-group-subtitle { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  min-height: 56px;
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 14px; font-weight: 500; color: var(--ink); }
+.settings-label small { display: block; color: var(--ink-3); font-weight: 400; font-size: 12px; margin-top: 2px; }
+.settings-value { color: var(--ink-2); font-size: 14px; }
+.settings-value input,
+.settings-value select {
+  width: 100%; max-width: 320px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color .15s, background .15s;
+}
+.settings-value input:focus,
+.settings-value select:focus {
+  outline: none; background: var(--surface);
+  border-color: var(--accent);
+}
+
+.toggle {
+  position: relative;
+  width: 44px; height: 26px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background .2s;
+}
+.toggle::after {
+  content: "";
+  position: absolute; top: 2px; left: 2px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,.2);
+  transition: transform .2s cubic-bezier(.32,.72,0,1);
+}
+.toggle[aria-checked="true"] { background: var(--signal-ok); }
+.toggle[aria-checked="true"]::after { transform: translateX(18px); }
+
+.btn-test {
+  padding: 7px 14px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-test:hover { background: var(--hover); color: var(--ink); }
+.btn-test.is-ok { background: color-mix(in oklch, var(--signal-ok) 14%, transparent); color: var(--signal-ok); }
+.btn-test.is-ok::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--signal-ok); }
+
+.swatch-row { display: flex; gap: 8px; }
+.swatch-row .sw {
+  width: 26px; height: 26px; border-radius: 8px;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform .15s;
+}
+.swatch-row .sw[aria-pressed="true"] { border-color: var(--ink); transform: scale(1.08); }
+
+/* segmented control (theme) */
+.seg-ctl { display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 9px; }
+.seg-ctl button {
+  padding: 6px 14px; border-radius: 7px;
+  font-size: 13px; color: var(--ink-2); font-weight: 500;
+}
+.seg-ctl button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+/* ============================================================
+   BOTTOM MINI PLAYER (NetEase style)
+   ============================================================ */
+.player {
+  display: grid;
+  grid-template-columns: 1fr 380px 1fr;
+  align-items: center;
+  padding: 0 24px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--line);
+}
+.player.is-idle .player-now,
+.player.is-idle .player-progress,
+.player.is-idle .player-actions { opacity: .4; }
+
+.player-now { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.player-cover {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
+  display: grid; place-items: center;
+  font-size: 16px; font-weight: 600; color: white;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+.player-info { display: flex; flex-direction: column; min-width: 0; }
+.player-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+.player-progress {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.player-controls { display: flex; align-items: center; gap: 12px; }
+.player-controls .icon-btn { width: 28px; height: 28px; }
+.player-controls .icon-btn.play {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--ink); color: var(--bg);
+}
+.player-controls .icon-btn.play:hover { background: var(--accent); color: var(--accent-ink); }
+
+.player-bar {
+  display: grid; grid-template-columns: 36px 1fr 36px; gap: 8px;
+  align-items: center; width: 100%;
+}
+.player-bar .time { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink-3); text-align: center; }
+.player-track {
+  height: 4px; border-radius: 2px;
+  background: var(--line); position: relative;
+  cursor: pointer;
+}
+.player-track .fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 58%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.player-track .knob {
+  position: absolute; left: 58%; top: 50%;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  transform: translate(-50%, -50%);
+}
+
+.player-actions { display: flex; justify-content: flex-end; gap: 4px; }
+
+/* ============================================================
+   ADVANCED DRAWER (vector knob console)
+   ============================================================ */
+.scrim {
+  position: fixed; inset: 0;
+  background: oklch(15% 0.01 50 / .4);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+  z-index: 100;
+}
+.scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; left: 50%; top: 50%;
+  transform: translate(-50%, -45%) scale(.96);
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease, transform .28s cubic-bezier(.32,.72,0,1);
+  z-index: 101;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.sheet[data-open="true"] { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+.sheet-head {
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sheet-title { font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+.sheet-body { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.sheet-foot {
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+.adv-section { margin-bottom: 24px; }
+.adv-section:last-child { margin-bottom: 0; }
+.adv-section h4 {
+  margin: 0 0 12px;
+  font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.emo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.emo-cell {
+  background: var(--surface-2);
+  padding: 12px 10px;
+  border-radius: 12px;
+  text-align: center;
+}
+.emo-cell label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
+.emo-cell input[type="range"] { width: 100%; }
+.emo-cell .val { display: block; font-family: "SF Mono", monospace; font-size: 12px; color: var(--ink); margin-top: 6px; }
+
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; border-radius: 2px;
+  background: var(--line); outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); border: none; cursor: pointer;
+}
+
+.btn-soft {
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 13px; color: var(--ink); font-weight: 500;
+}
+.btn-soft:hover { background: var(--hover); }
+
+/* ============================================================
+   TWEAKS panel
+   ============================================================ */
+.tweaks {
+  position: fixed; bottom: 92px; right: 20px;
+  width: 240px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+  transform: translateY(calc(100% - 40px));
+  transition: transform .28s cubic-bezier(.32,.72,0,1);
+}
+.tweaks[data-open="true"] { transform: translateY(0); }
+.tweaks[data-open="true"] #tweaksCaret { transform: rotate(180deg); }
+.tweaks-head {
+  padding: 10px 14px;
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer;
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  color: var(--ink-2);
+}
+.tweaks-head::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  margin-right: 8px;
+  display: inline-block;
+}
+.tweaks-body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.tweak-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 10px; border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.tweak-row:first-child { border-top: none; padding-top: 0; }
+.tweak-row .lbl { color: var(--ink-2); }
+
+/* Responsive */
+@media (max-width: 720px) {
+  .main { padding: 24px 16px; }
+  .topnav { padding: 0 16px; }
+  .player { grid-template-columns: 1fr auto; padding: 0 12px; }
+  .player-progress { display: none; }
+  .player-actions { display: none; }
+  .settings-row { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     SVG ICON SPRITE
+     ============================================================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- sparkle (LLM / AI) -->
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>
+    </symbol>
+
+    <!-- mic (TTS) -->
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3"/>
+      <path d="M5 11v1a7 7 0 0 0 14 0v-1"/>
+      <path d="M12 19v3M8 22h8"/>
+    </symbol>
+
+    <!-- sliders (General settings) -->
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h8M16 7h4"/>
+      <circle cx="14" cy="7" r="2"/>
+      <path d="M4 17h2M10 17h10"/>
+      <circle cx="8" cy="17" r="2"/>
+      <path d="M4 12h12M20 12h0"/>
+      <circle cx="18" cy="12" r="2"/>
+    </symbol>
+
+    <!-- waveform (Studio nav) -->
+    <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12h2"/><path d="M7 9v6"/><path d="M11 5v14"/><path d="M15 8v8"/><path d="M19 12h2"/>
+    </symbol>
+
+    <!-- grid (Library nav) -->
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+    </symbol>
+
+    <!-- gear (Settings nav) -->
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+    </symbol>
+
+    <!-- play -->
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z"/>
+    </symbol>
+
+    <!-- swap / change -->
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 4L3 8l4 4"/>
+      <path d="M3 8h13a4 4 0 0 1 4 4"/>
+      <path d="M17 20l4-4-4-4"/>
+      <path d="M21 16H8a4 4 0 0 1-4-4"/>
+    </symbol>
+
+    <!-- search -->
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="M20.5 20.5L16.7 16.7"/>
+    </symbol>
+
+    <!-- download -->
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v13"/>
+      <path d="M7 11l5 5 5-5"/>
+      <path d="M5 21h14"/>
+    </symbol>
+
+    <!-- upload -->
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 16V3"/>
+      <path d="M7 8l5-5 5 5"/>
+      <path d="M5 21h14"/>
+    </symbol>
+
+    <!-- refresh -->
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12a9 9 0 1 1-3.4-7.05"/>
+      <path d="M21 4v5h-5"/>
+    </symbol>
+
+    <!-- list / menu -->
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 6h13M8 12h13M8 18h13"/>
+      <circle cx="4" cy="6" r="1"/>
+      <circle cx="4" cy="12" r="1"/>
+      <circle cx="4" cy="18" r="1"/>
+    </symbol>
+
+    <!-- skip back -->
+    <symbol id="i-skip-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 19L9 12l10-7v14z" fill="currentColor"/>
+      <path d="M5 5v14"/>
+    </symbol>
+
+    <!-- skip forward -->
+    <symbol id="i-skip-fwd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 5l10 7-10 7V5z" fill="currentColor"/>
+      <path d="M19 5v14"/>
+    </symbol>
+
+    <!-- close -->
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6L6 18M6 6l12 12"/>
+    </symbol>
+
+    <!-- chevron up -->
+    <symbol id="i-chev-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 15l6-6 6 6"/>
+    </symbol>
+
+    <!-- help -->
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M9.3 9.3a2.7 2.7 0 0 1 5.2 1c0 1.8-2.5 2-2.5 3.7"/>
+      <circle cx="12" cy="17" r=".6" fill="currentColor"/>
+    </symbol>
+
+    <!-- file text (TXT) -->
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+      <path d="M14 3v6h6"/>
+      <path d="M8 13h8M8 17h5"/>
+    </symbol>
+
+    <!-- film (SRT) -->
+    <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M3 9h4M3 15h4M17 9h4M17 15h4M8 4v16M16 4v16"/>
+    </symbol>
+
+    <!-- plus -->
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14M5 12h14"/>
+    </symbol>
+
+    <!-- package (ZIP) -->
+    <symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 8L12 3 3 8v8l9 5 9-5V8z"/>
+      <path d="M3 8l9 5 9-5"/>
+      <path d="M12 22V13"/>
+    </symbol>
+
+    <!-- sparkles (AI badge) — smaller alt -->
+    <symbol id="i-ai" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2.5l1.7 4.6 4.6 1.7-4.6 1.7L12 15.1l-1.7-4.6-4.6-1.7 4.6-1.7z" opacity=".95"/>
+      <path d="M19 14l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z" opacity=".7"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app">
+
+  <!-- ============================================================
+       TOP NAV
+       ============================================================ -->
+  <header class="topnav">
+    <div class="brand">
+      <div class="brand-dot">E</div>
+      <span>EmotionTTS</span>
+    </div>
+
+    <nav class="nav-segments">
+      <button class="nav-seg" aria-current="page" data-route="studio">
+        <svg class="i i-sm"><use href="#i-wave"/></svg> 工作台
+      </button>
+      <button class="nav-seg" data-route="library">
+        <svg class="i i-sm"><use href="#i-grid"/></svg> 素材库
+      </button>
+      <button class="nav-seg" data-route="settings">
+        <svg class="i i-sm"><use href="#i-gear"/></svg> 设置
+      </button>
+    </nav>
+
+    <div class="nav-right">
+      <button class="icon-btn" title="使用提示"><svg class="i"><use href="#i-help"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       MAIN CONTENT
+       ============================================================ -->
+  <main class="main">
+
+    <!-- ─────────── STUDIO ─────────── -->
+    <section class="view is-active" data-view="studio">
+
+      <div class="studio-mode" role="tablist">
+        <button aria-current="page" data-mode="single">
+          <span>单句配音</span>
+        </button>
+        <button data-mode="long">
+          <span>长文本配音</span>
+        </button>
+      </div>
+
+      <!-- SINGLE MODE -->
+      <div data-mode-pane="single">
+
+        <!-- STEP 1: Choose a voice -->
+        <div class="step is-done">
+          <div class="step-head">
+            <div class="step-num">1</div>
+            <div class="step-title">选个声音</div>
+            <div class="step-hint">点击卡片切换角色</div>
+          </div>
+          <div class="cast-card" id="castPicker">
+            <div class="cast-avatar">林</div>
+            <div class="cast-meta">
+              <div class="cast-name">林晚</div>
+              <div class="cast-sub">142 个片段 · 覆盖 7 种情绪</div>
+            </div>
+            <div class="cast-actions">
+              <button class="btn-icon" title="试听样本"><svg class="i"><use href="#i-play"/></svg></button>
+              <button class="btn-icon" title="切换角色"><svg class="i"><use href="#i-swap"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: Write -->
+        <div class="step is-done">
+          <div class="step-head">
+            <div class="step-num">2</div>
+            <div class="step-title">写下台词</div>
+            <div class="step-hint">最多 300 字</div>
+          </div>
+          <div class="script-card">
+            <textarea id="scriptInput" placeholder="敲下你想要的台词……">那时候我并不知道，原来一句轻飘飘的"再见"，会在多年之后还烫着我的舌尖。</textarea>
+            <div class="script-foot">
+              <span class="left">支持中英混排</span>
+              <span class="count"><strong id="charCount">34</strong> / 300</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: Generate -->
+        <div class="step">
+          <div class="step-head">
+            <div class="step-num">3</div>
+            <div class="step-title">让它响起来</div>
+            <div class="step-hint">AI 会自动诊断情绪并挑选最合适的参考音</div>
+          </div>
+          <div class="action-zone">
+            <button class="btn-primary" id="synthBtn">
+              <svg class="i"><use href="#i-mic"/></svg>
+              开始合成
+            </button>
+            <button class="advanced-link" id="openAdvanced">
+              高级模式 · 手动情绪 / 参考音 / 向量微调
+            </button>
+          </div>
+
+          <!-- After-AI diagnosis preview (shown after click) -->
+          <div class="diag-preview" id="diagPreview" style="display:none">
+            <div class="icon"><svg class="i" style="width:16px;height:16px"><use href="#i-ai"/></svg></div>
+            <div class="text">
+              <div class="label">情绪诊断</div>
+              <div class="body">
+                主情绪：<strong><span class="swatch" style="background: oklch(62% 0.14 250)"></span>哀</strong>（含微量低落与未尽的暖意）。已为你挑选 3 条最贴近的参考音，<strong class="mono">Alpha = 0.55</strong>。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LONG-TEXT MODE -->
+      <div data-mode-pane="long" style="display:none">
+
+        <div class="step">
+          <div class="step-head">
+            <div class="step-num">1</div>
+            <div class="step-title">粘贴或导入长文本</div>
+            <div class="step-hint">支持 .txt / .srt 字幕</div>
+          </div>
+          <div class="script-card">
+            <textarea placeholder="把整段台词粘贴到这里…&#10;系统会自动按标点拆分为可独立合成的句子。" style="min-height: 160px"></textarea>
+            <div class="script-foot">
+              <span class="left">
+                <button class="btn-chip" style="padding: 4px 10px; font-size: 12px"><svg class="i i-sm"><use href="#i-file"/></svg> 导入 TXT</button>
+                <button class="btn-chip" style="padding: 4px 10px; font-size: 12px"><svg class="i i-sm"><use href="#i-film"/></svg> 导入 SRT</button>
+              </span>
+              <span class="count">最短字数 <strong>10</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-head">
+            <div class="step-num">2</div>
+            <div class="step-title">智能拆分与逐句合成</div>
+          </div>
+
+          <div class="batch-bar">
+            <div class="left">
+              <input type="checkbox" class="seg-check" id="selAll">
+              <label for="selAll" style="cursor: pointer">已选 <strong>4</strong> / 6 句</label>
+            </div>
+            <div class="right">
+              <button class="btn-chip">智能匹配</button>
+              <button class="btn-chip">全部合成</button>
+              <button class="btn-chip">导出 ZIP</button>
+            </div>
+          </div>
+
+          <div class="seg-list">
+            <div class="seg-item is-done">
+              <span class="seg-num">01</span>
+              <input type="checkbox" class="seg-check" checked>
+              <div class="seg-text">那时候我并不知道，原来一句轻飘飘的"再见"，会在多年之后还烫着我的舌尖。</div>
+              <span class="seg-status is-ok">已合成</span>
+              <button class="btn-icon"><svg class="i i-sm"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="seg-item is-done">
+              <span class="seg-num">02</span>
+              <input type="checkbox" class="seg-check" checked>
+              <div class="seg-text">我以为我已经放下了，可是听到这首歌还是会哭。</div>
+              <span class="seg-status is-ok">已合成</span>
+              <button class="btn-icon"><svg class="i i-sm"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="seg-item">
+              <span class="seg-num">03</span>
+              <input type="checkbox" class="seg-check" checked>
+              <div class="seg-text">那天的风很轻，像她什么都没说过一样。</div>
+              <span class="seg-status is-pending">待合成</span>
+              <button class="btn-icon"><svg class="i i-sm"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="seg-item">
+              <span class="seg-num">04</span>
+              <input type="checkbox" class="seg-check" checked>
+              <div class="seg-text">再见这两个字，原来这么重。</div>
+              <span class="seg-status is-pending">待合成</span>
+              <button class="btn-icon"><svg class="i i-sm"><use href="#i-play"/></svg></button>
+            </div>
+            <div class="seg-item">
+              <span class="seg-num">05</span>
+              <input type="checkbox" class="seg-check">
+              <div class="seg-text">把那封没寄出去的信，烧给了夜。</div>
+              <span class="seg-status">未选参考音</span>
+              <button class="btn-icon"><svg class="i i-sm"><use href="#i-play"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── LIBRARY ─────────── -->
+    <section class="view" data-view="library">
+      <div class="lib-head">
+        <div class="lib-title">素材库</div>
+        <div class="lib-tools">
+          <button class="btn-chip"><svg class="i i-sm"><use href="#i-package"/></svg> 导入 ZIP</button>
+          <button class="btn-primary" style="padding: 10px 20px; font-size: 14px; min-width: 0">+ 新建角色</button>
+        </div>
+      </div>
+
+      <div class="lib-search">
+        <svg class="i" style="color: var(--ink-3)"><use href="#i-search"/></svg>
+        <input type="text" placeholder="搜索角色...">
+      </div>
+
+      <div class="lib-grid">
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));">林</div>
+          <div class="lib-card-name">林晚</div>
+          <div class="lib-card-meta">142 段</div>
+        </article>
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.14 250), oklch(48% 0.10 250));">梅</div>
+          <div class="lib-card-name">梅子</div>
+          <div class="lib-card-meta">88 段</div>
+        </article>
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.16 140), oklch(48% 0.12 140));">伟</div>
+          <div class="lib-card-name">老韦</div>
+          <div class="lib-card-meta">203 段</div>
+        </article>
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.14 290), oklch(48% 0.10 290));">星</div>
+          <div class="lib-card-name">星野</div>
+          <div class="lib-card-meta">66 段</div>
+        </article>
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.14 70), oklch(48% 0.10 70));">朔</div>
+          <div class="lib-card-name">江朔</div>
+          <div class="lib-card-meta">119 段</div>
+        </article>
+        <article class="lib-card">
+          <div class="lib-card-avatar" style="background: linear-gradient(135deg, oklch(62% 0.14 200), oklch(48% 0.10 200));">沈</div>
+          <div class="lib-card-name">沈砚</div>
+          <div class="lib-card-meta">94 段</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ─────────── SETTINGS ─────────── -->
+    <section class="view" data-view="settings">
+      <div class="settings-title">设置</div>
+
+      <!-- LLM -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <div class="settings-group-icon llm"><svg class="i" style="width:16px;height:16px"><use href="#i-sparkle"/></svg></div>
+          <div>
+            <div class="settings-group-title">语言大模型</div>
+            <div class="settings-group-subtitle">用于情感分析与参考音挑选的底层 LLM</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">服务商</div>
+          <div class="settings-value">
+            <select>
+              <option>本地 Ollama（默认）</option>
+              <option>硅基流动</option>
+              <option>优云智算</option>
+              <option>Deepseek 官方</option>
+              <option>自定义</option>
+            </select>
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">API Base URL</div>
+          <div class="settings-value">
+            <input type="text" value="http://127.0.0.1:11434/v1" placeholder="例如 http://127.0.0.1:11434/v1">
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">API Key<small>本地服务可留空</small></div>
+          <div class="settings-value">
+            <input type="password" value="" placeholder="留空或输入你的 Key">
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">模型名称</div>
+          <div class="settings-value">
+            <input type="text" value="qwen2.5:7b" placeholder="例如 qwen2.5:7b">
+          </div>
+          <div><button class="btn-test is-ok">已连通</button></div>
+        </div>
+      </div>
+
+      <!-- TTS -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <div class="settings-group-icon tts"><svg class="i" style="width:16px;height:16px"><use href="#i-mic"/></svg></div>
+          <div>
+            <div class="settings-group-title">语音合成引擎</div>
+            <div class="settings-group-subtitle">IndexTTS2 推理服务的位置</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">部署方式</div>
+          <div class="settings-value">
+            <div class="seg-ctl">
+              <button aria-pressed="true">本地</button>
+              <button>远端</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">本地端口<small>需另开终端启动 tts_service</small></div>
+          <div class="settings-value mono">127.0.0.1:9800</div>
+          <div><button class="btn-test is-ok">服务在线</button></div>
+        </div>
+      </div>
+
+      <!-- General -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <div class="settings-group-icon gen"><svg class="i" style="width:16px;height:16px"><use href="#i-sliders"/></svg></div>
+          <div>
+            <div class="settings-group-title">通用</div>
+            <div class="settings-group-subtitle">外观、默认参数</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">主题</div>
+          <div class="settings-value">
+            <div class="seg-ctl" id="themeSeg">
+              <button data-theme-set="light" aria-pressed="true">亮色</button>
+              <button data-theme-set="dark">暗色</button>
+              <button data-theme-set="auto">跟随系统</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">强调色</div>
+          <div class="settings-value">
+            <div class="swatch-row" id="accentRow">
+              <button class="sw" aria-pressed="true" data-accent="64% 0.20 38" style="background: oklch(64% 0.20 38)"></button>
+              <button class="sw" data-accent="60% 0.20 25" style="background: oklch(60% 0.20 25)"></button>
+              <button class="sw" data-accent="64% 0.18 145" style="background: oklch(64% 0.18 145)"></button>
+              <button class="sw" data-accent="60% 0.18 250" style="background: oklch(60% 0.18 250)"></button>
+              <button class="sw" data-accent="58% 0.20 290" style="background: oklch(58% 0.20 290)"></button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">静音切分灵敏度<small>新建角色时默认值（秒）</small></div>
+          <div class="settings-value">
+            <input type="number" value="0.8" min="0.1" max="2.0" step="0.1" style="max-width: 100px">
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">长文本最短字数<small>低于此数将与相邻句子合并</small></div>
+          <div class="settings-value">
+            <input type="number" value="10" min="1" max="700" style="max-width: 100px">
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">情绪起伏默认值<small>批量匹配时使用</small></div>
+          <div class="settings-value">
+            <select style="max-width: 160px">
+              <option>很低 (0.2)</option>
+              <option>低 (0.4)</option>
+              <option selected>中 (0.6)</option>
+              <option>高 (0.8)</option>
+              <option>很高 (1.0)</option>
+            </select>
+          </div>
+          <div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">允许 API 模式优先<small>合成时优先使用标记为 API-safe 的素材</small></div>
+          <div class="settings-value"></div>
+          <div><div class="toggle" aria-checked="true" role="switch"></div></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ============================================================
+       BOTTOM PLAYER (NetEase style)
+       ============================================================ -->
+  <div class="player" id="player">
+    <div class="player-now">
+      <div class="player-cover">林</div>
+      <div class="player-info">
+        <div class="player-title">那时候我并不知道，原来一句轻飘飘的"再见"……</div>
+        <div class="player-sub">林晚 · 哀 · α 0.55 · synth_a3f7c8</div>
+      </div>
+    </div>
+    <div class="player-progress">
+      <div class="player-controls">
+        <button class="icon-btn" title="后退 5s"><svg class="i i-sm"><use href="#i-skip-back"/></svg></button>
+        <button class="icon-btn play" title="播放"><svg class="i" style="width:14px;height:14px"><use href="#i-play"/></svg></button>
+        <button class="icon-btn" title="前进 5s"><svg class="i i-sm"><use href="#i-skip-fwd"/></svg></button>
+      </div>
+      <div class="player-bar">
+        <span class="time">0:08</span>
+        <div class="player-track"><div class="fill"></div><div class="knob"></div></div>
+        <span class="time">0:14</span>
+      </div>
+    </div>
+    <div class="player-actions">
+      <button class="icon-btn" title="下载"><svg class="i i-sm"><use href="#i-download"/></svg></button>
+      <button class="icon-btn" title="重新生成"><svg class="i i-sm"><use href="#i-refresh"/></svg></button>
+      <button class="icon-btn" title="历史"><svg class="i i-sm"><use href="#i-list"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ADVANCED SHEET (vector / manual emotion / reference picker)
+     ============================================================ -->
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title">高级模式</div>
+      <div style="font-size: 12px; color: var(--ink-3); margin-top: 2px">手动接管 AI 的情绪诊断与参考音挑选</div>
+    </div>
+    <button class="icon-btn" id="closeSheet"><svg class="i i-sm"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="sheet-body">
+
+    <div class="adv-section">
+      <h4>情绪锁定</h4>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <select style="padding: 8px 12px; background: var(--surface-2); border: 1px solid transparent; border-radius: 8px; font-size: 14px;">
+          <option>跟随 AI 诊断</option>
+          <option>喜</option><option>怒</option><option selected>哀</option><option>惧</option>
+          <option>厌</option><option>低落</option><option>惊</option><option>平</option>
+        </select>
+        <select style="padding: 8px 12px; background: var(--surface-2); border: 1px solid transparent; border-radius: 8px; font-size: 14px;">
+          <option>Low</option><option selected>Medium</option><option>High</option>
+        </select>
+        <input type="text" placeholder="复合情绪：嘲讽、傲娇..." style="flex: 1; min-width: 180px; padding: 8px 12px; background: var(--surface-2); border: 1px solid transparent; border-radius: 8px; font-size: 14px;">
+      </div>
+    </div>
+
+    <div class="adv-section">
+      <h4>情绪向量（8 通道）</h4>
+      <div class="emo-grid">
+        <div class="emo-cell"><label>喜</label><input type="range" min="0" max="100" value="12"><span class="val">0.12</span></div>
+        <div class="emo-cell"><label>怒</label><input type="range" min="0" max="100" value="0"><span class="val">0.00</span></div>
+        <div class="emo-cell"><label>哀</label><input type="range" min="0" max="100" value="68"><span class="val">0.68</span></div>
+        <div class="emo-cell"><label>惧</label><input type="range" min="0" max="100" value="8"><span class="val">0.08</span></div>
+        <div class="emo-cell"><label>厌</label><input type="range" min="0" max="100" value="0"><span class="val">0.00</span></div>
+        <div class="emo-cell"><label>低落</label><input type="range" min="0" max="100" value="42"><span class="val">0.42</span></div>
+        <div class="emo-cell"><label>惊</label><input type="range" min="0" max="100" value="0"><span class="val">0.00</span></div>
+        <div class="emo-cell"><label>平</label><input type="range" min="0" max="100" value="18"><span class="val">0.18</span></div>
+      </div>
+    </div>
+
+    <div class="adv-section">
+      <h4>全局情感张力 · Alpha</h4>
+      <div style="display: flex; align-items: center; gap: 16px; background: var(--surface-2); padding: 14px 16px; border-radius: 12px;">
+        <input type="range" min="10" max="100" value="55" style="flex: 1">
+        <span class="mono" style="font-size: 18px; font-weight: 500;">0.55</span>
+      </div>
+      <div style="font-size: 12px; color: var(--ink-3); margin-top: 8px;">建议各通道总和 ≤ 0.8，避免饱和失真</div>
+    </div>
+
+  </div>
+  <div class="sheet-foot">
+    <button class="btn-soft" id="closeSheet2">取消</button>
+    <button class="btn-primary" style="padding: 10px 24px; font-size: 14px; min-width: 0">应用并合成</button>
+  </div>
+</aside>
+
+<!-- ============================================================
+     TWEAKS
+     ============================================================ -->
+<div class="tweaks" id="tweaks">
+  <div class="tweaks-head" id="tweaksToggle">
+    <span>Tweaks</span>
+    <svg class="i i-sm" style="transition: transform .24s ease;" id="tweaksCaret"><use href="#i-chev-up"/></svg>
+  </div>
+  <div class="tweaks-body">
+    <div class="tweak-row">
+      <span class="lbl">底部播放栏</span>
+      <div class="seg-ctl">
+        <button aria-pressed="true">显示</button>
+        <button>隐藏</button>
+      </div>
+    </div>
+    <div class="tweak-row">
+      <span class="lbl">主流程对齐</span>
+      <div class="seg-ctl">
+        <button aria-pressed="true">居中</button>
+        <button>左对齐</button>
+      </div>
+    </div>
+    <div class="tweak-row">
+      <span class="lbl">圆角风格</span>
+      <div class="seg-ctl">
+        <button>偏锐</button>
+        <button aria-pressed="true">柔和</button>
+        <button>极圆</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ========== Nav switching ========== */
+document.querySelectorAll('.nav-seg').forEach(seg => {
+  seg.addEventListener('click', () => {
+    const route = seg.dataset.route;
+    document.querySelectorAll('.nav-seg').forEach(s => s.setAttribute('aria-current', s === seg ? 'page' : 'false'));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('is-active', v.dataset.view === route));
+    // Idle the player on non-studio routes for clarity
+    document.getElementById('player').classList.toggle('is-idle', route !== 'studio');
+  });
+});
+
+/* ========== Single / Long-text mode ========== */
+document.querySelectorAll('.studio-mode button').forEach(b => {
+  b.addEventListener('click', () => {
+    const mode = b.dataset.mode;
+    document.querySelectorAll('.studio-mode button').forEach(x => x.setAttribute('aria-current', x === b ? 'page' : 'false'));
+    document.querySelectorAll('[data-mode-pane]').forEach(p => {
+      p.style.display = p.dataset.modePane === mode ? '' : 'none';
+    });
+  });
+});
+
+/* ========== Char count ========== */
+const ta = document.getElementById('scriptInput');
+const cc = document.getElementById('charCount');
+if (ta && cc) {
+  ta.addEventListener('input', () => { cc.textContent = ta.value.length; });
+}
+
+/* ========== Synth click → reveal diagnosis ========== */
+document.getElementById('synthBtn')?.addEventListener('click', () => {
+  const dp = document.getElementById('diagPreview');
+  if (dp) dp.style.display = '';
+  document.getElementById('player').classList.remove('is-idle');
+});
+
+/* ========== Advanced sheet ========== */
+const scrim = document.getElementById('scrim');
+const sheet = document.getElementById('sheet');
+function openSheet() { scrim.dataset.open = 'true'; sheet.dataset.open = 'true'; }
+function closeSheet() { scrim.dataset.open = 'false'; sheet.dataset.open = 'false'; }
+document.getElementById('openAdvanced')?.addEventListener('click', openSheet);
+document.getElementById('closeSheet')?.addEventListener('click', closeSheet);
+document.getElementById('closeSheet2')?.addEventListener('click', closeSheet);
+scrim.addEventListener('click', closeSheet);
+
+/* Range live val */
+document.querySelectorAll('.emo-cell input[type="range"]').forEach(r => {
+  const val = r.parentElement.querySelector('.val');
+  r.addEventListener('input', () => { val.textContent = (r.value / 100).toFixed(2); });
+});
+
+/* ========== Tweaks ========== */
+const tweaks = document.getElementById('tweaks');
+document.getElementById('tweaksToggle')?.addEventListener('click', () => {
+  tweaks.dataset.open = tweaks.dataset.open === 'true' ? 'false' : 'true';
+});
+
+/* Theme segmented */
+document.querySelectorAll('[data-theme-set]').forEach(b => {
+  b.addEventListener('click', () => {
+    const t = b.dataset.themeSet;
+    if (t === 'auto') {
+      document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } else {
+      document.documentElement.dataset.theme = t;
+    }
+    b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+  });
+});
+
+/* Accent swatch */
+document.querySelectorAll('#accentRow .sw').forEach(s => {
+  s.addEventListener('click', () => {
+    const a = s.dataset.accent;
+    document.documentElement.style.setProperty('--accent', `oklch(${a})`);
+    document.documentElement.style.setProperty('--accent-soft', `oklch(${a} / .10)`);
+    const parts = a.split(' ');
+    document.documentElement.style.setProperty('--accent-strong', `oklch(${parseFloat(parts[0]) - 6}% ${parts[1]} ${parts[2]})`);
+    document.querySelectorAll('#accentRow .sw').forEach(x => x.setAttribute('aria-pressed', x === s ? 'true' : 'false'));
+  });
+});
+
+/* Toggle switch */
+document.querySelectorAll('.toggle[role="switch"]').forEach(t => {
+  t.addEventListener('click', () => {
+    t.setAttribute('aria-checked', t.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+  });
+});
+
+/* Segmented controls (generic) */
+document.querySelectorAll('.seg-ctl').forEach(seg => {
+  if (seg.id === 'themeSeg') return;
+  seg.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    });
+  });
+});
+
+/* Cast picker (placeholder click feedback) */
+document.getElementById('castPicker')?.addEventListener('click', (e) => {
+  if (e.target.closest('.btn-icon')) return;
+  // would open a character selector
+});
+</script>
+</body>
+</html>

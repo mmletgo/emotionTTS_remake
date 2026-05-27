@@ -1,0 +1,11 @@
+/* RenameSheet — 重命名角色浮层 */
+
+.rename-sheet {
+  width: min(400px, 92vw);
+}
+
+.form-error {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--signal-err);
+}
