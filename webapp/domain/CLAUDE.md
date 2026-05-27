@@ -20,3 +20,5 @@
 - 不允许 import FastAPI、不允许抛 HTTPException —— 抛自定义异常类（`CharacterNotFound`、`EmptyLibrary`、`ReferenceAudioMissing`、`InvalidCharacterPackage` 等），由 api 层翻译。
 - 不允许直接拼 LLM / TTS 的 HTTP 协议 —— 走 `clients.llm` / `clients.tts`。
 - 路径常量集中在每个文件顶部（`CHARACTERS_DIR`、`OUTPUTS_DIR`），从仓库根定位（`os.path.join(_THIS_DIR, "..", "..")`）。
+- **Windows 路径约定**：`library.json` 中的 `filename` 字段（如 `voice_lib/xxx.wav`）统一使用 forward slash 存储；所有文件系统操作（`os.path.join`、`os.remove` 等）在拼路径前必须 `.replace("/", os.sep)`；URL 生成时必须确保全部为 forward slash（`.replace("\\", "/")`)。
+- **Windows event loop**：`emotion_tagger.py` 的 `tag_items_sync` 在 threadpool 中运行，Windows 上 `asyncio.run()` 默认 ProactorEventLoop 与 httpx 不兼容，已改为 Windows 下手动创建 `SelectorEventLoop`。

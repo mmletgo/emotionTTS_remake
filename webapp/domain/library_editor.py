@@ -153,7 +153,9 @@ def manual_split_logic(char_id: str, item_id: int, split_time: float):
         raise ValueError("找不到对应的素材节点")
 
     split_ms = int(split_time * 1000)
-    audio_path = os.path.join(char_dir, target_item["filename"])
+    # filename 在 JSON 中始终以 forward slash 存储（"voice_lib/xxx.wav"），
+    # 需要替换为当前系统路径分隔符，避免 Windows 上产生混合路径
+    audio_path = os.path.join(char_dir, target_item["filename"].replace("/", os.sep))
 
     if not os.path.exists(audio_path):
         raise FileNotFoundError("找不到需要切分的实体音频文件")
@@ -171,11 +173,12 @@ def manual_split_logic(char_id: str, item_id: int, split_time: float):
     new_id_1 = max([item["id"] for item in items] + [0]) + 1
     new_id_2 = new_id_1 + 1
 
+    # fn1/fn2 存入 JSON，统一使用 forward slash 作为跨平台约定
     fn1 = f"voice_lib/{char_id}_split_{new_id_1}.wav"
     fn2 = f"voice_lib/{char_id}_split_{new_id_2}.wav"
-
-    path1 = os.path.join(char_dir, fn1)
-    path2 = os.path.join(char_dir, fn2)
+    # 文件系统操作路径需要替换为当前系统的路径分隔符，避免 Windows 上混合路径
+    path1 = os.path.join(char_dir, fn1.replace("/", os.sep))
+    path2 = os.path.join(char_dir, fn2.replace("/", os.sep))
 
     part1.export(path1, format="wav")
     part2.export(path2, format="wav")

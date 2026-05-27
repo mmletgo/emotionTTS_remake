@@ -219,6 +219,12 @@ async def transcribe(
 # ==================== 入口 ====================
 
 if __name__ == "__main__":
+    import sys
+    # Windows 上 uvicorn 默认 ProactorEventLoop 与部分异步 IO 库不兼容；
+    # 强制使用 SelectorEventLoop 确保跨平台行为一致
+    if sys.platform == "win32":
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     _clear_stale_uploads()
     print(f"[asr_server] 启动 Whisper ASR 服务，端口 {PORT}")
     print(f"[asr_server] 模型目录: {WHISPER_MODEL_DIR}")
