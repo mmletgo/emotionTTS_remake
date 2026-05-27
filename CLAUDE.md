@@ -15,21 +15,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 启动与运行
 
-整套项目（Web 中枢 + 本地 TTS 推理）**共用同一个 indextts venv**（`/Users/hans/repos/index-tts/.venv`，uv 管理，Python 3.10.20），里面已经装好 FastAPI / pydub / httpx / faster-whisper / indextts / torch 全部依赖。
+### 推荐方式：一键脚本
 
 ```bash
-alias emotts-py=/Users/hans/repos/index-tts/.venv/bin/python
+# 第一步：一次性部署（交互式，首次使用）
+bash install.sh
 
-# 1) Web 中枢（端口 9880）—— serve frontend build 产物 + 所有 API
-emotts-py main.py
+# 第二步：启动所有服务
+bash start.sh
+
+# 常用管理命令
+bash start.sh status          # 查看各服务状态
+bash start.sh stop            # 停止所有服务
+bash start.sh restart         # 重启所有服务
+bash start.sh logs webapp     # 查看 webapp 日志
+bash start.sh logs asr        # 查看 asr_service 日志
+bash start.sh logs tts        # 查看 tts_service 日志
+```
+
+完整部署文档见 `docs/DEPLOY.md`。
+
+### 高级/手动方式
+
+适用于已有 indextts venv 的开发者：
+
+```bash
+# 设定 Python（指向你的 indextts venv）
+EMOTTS_PY=/path/to/venv/bin/python
+
+# 1) Web 中枢（端口 9880）
+$EMOTTS_PY main.py
 
 # 2) IndexTTS2 推理服务（端口 9800，另开终端）
-INDEXTTS_MODEL_DIR=/Users/hans/repos/index-tts/checkpoints emotts-py tts_service/server.py
+INDEXTTS_MODEL_DIR=/path/to/index-tts/checkpoints $EMOTTS_PY tts_service/server.py
 
 # 3) ASR 语音识别微服务（端口 9900，另开终端）
-emotts-py asr_service/server.py
-# 可选：WHISPER_MODEL_DIR=<自定义路径> 覆盖模型目录（默认 models/whisper-small）
-# 可选：ASR_PORT=<端口> 覆盖监听端口
+$EMOTTS_PY asr_service/server.py
 
 # 4) 前端开发模式（可选，5173，HMR）
 cd frontend && npm install && npm run dev
@@ -37,7 +58,7 @@ cd frontend && npm install && npm run dev
 # 改完打包：npm run build → 产物输出到 webapp/frontend/
 ```
 
-只走远端 LLM 时不需要起 9800；要用本地 TTS 才需要。只走云端 ASR 时不需要起 9900；要用本地 Whisper 才需要。前端日常修改走 `npm run dev`，发布前 `npm run build` 把产物提交进 `webapp/frontend/`。
+只走云端 TTS 时不需要起 9800；只走云端 ASR 时不需要起 9900。前端日常修改走 `npm run dev`，发布前 `npm run build` 把产物提交进 `webapp/frontend/`。
 
 **没有测试套件**，没有 lint 配置。验证方式：浏览器打开 `http://127.0.0.1:9880/` 走通「创建角色 → 匹配 → 合成」三条主链路。Pyright 检查：`pyright`（仓库根，使用根目录的 `pyrightconfig.json`，应为 0 errors）。
 

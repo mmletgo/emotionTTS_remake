@@ -21,6 +21,12 @@ models/whisper-small/model.bin
 models/whisper-small/*.safetensors
 models/whisper-small/.cache/
 
+# 脚本运行时产物（PID / 日志 / paths.env）
+.runtime/
+
+# Python 虚拟环境（cloud TTS 模式下在项目根创建）
+.venv/
+
 # macOS / IDE
 .DS_Store
 .idea/
