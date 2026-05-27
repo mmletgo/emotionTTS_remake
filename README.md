@@ -7,6 +7,8 @@
 
 > **上传一段参考音 → AI 自动切片、转写、打情绪标签 → 输入台词 → AI 挑出最合适的参考音 + 8 维情绪向量 → 一键合成带情感的克隆配音。**
 
+https://github.com/user-attachments/assets/8382a4ba-56c6-4799-8c7b-767f3d924e9f
+
 后端基于 [IndexTTS2](https://github.com/index-tts/index-tts)，前端是 Vite + React SPA，全部本地运行，支持 OpenAI 兼容 API 外部调用。
 
 ---
