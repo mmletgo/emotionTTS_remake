@@ -38,6 +38,13 @@ def _default_config() -> dict[str, Any]:
             "api_base": "http://127.0.0.1:9800/v1",
             "api_key": "",
         },
+        "asr": {
+            "type": "local",
+            "api_base": "http://127.0.0.1:9900/v1",
+            "api_key": "",
+            "model": "whisper-small",
+            "language": "zh",
+        },
     }
 
 
@@ -80,6 +87,10 @@ def get_config() -> dict[str, Any]:
     # TTS 字段补全
     saved_tts = saved.get("tts", {}) if isinstance(saved.get("tts"), dict) else {}
     cfg["tts"].update({k: v for k, v in saved_tts.items() if k in cfg["tts"]})
+
+    # ASR 字段补全（旧 config.json 无 asr 节时回填默认）
+    saved_asr = saved.get("asr", {}) if isinstance(saved.get("asr"), dict) else {}
+    cfg["asr"].update({k: v for k, v in saved_asr.items() if k in cfg["asr"]})
 
     return cfg
 

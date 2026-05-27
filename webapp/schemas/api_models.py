@@ -4,15 +4,26 @@ API 数据模型定义 (Schemas)
 """
 
 from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 
 # ==========================================
 # 1. 配置相关模型 (Config)
 # ==========================================
+
+class AsrConfig(BaseModel):
+    """ASR 服务配置（本地 asr_service 或云端 OpenAI 兼容接口）。"""
+    type: Literal["local", "cloud"] = "local"
+    api_base: str = "http://127.0.0.1:9900/v1"
+    api_key: str = ""
+    model: str = "whisper-small"
+    language: str = "zh"
+
+
 class ConfigRequest(BaseModel):
     llm_active_type: str
     llm_configs: dict
     tts: dict
+    asr: Optional[AsrConfig] = None
 
 # ==========================================
 # 2. 角色素材相关模型 (Character Items)

@@ -4,42 +4,103 @@ import uuid
 import re
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-from faster_whisper import WhisperModel
+from typing import Any, Callable
+
+from webapp.clients.asr import transcribe as asr_transcribe, AsrError
+from webapp.settings import get_config
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # ffmpeg / ffprobe 信任系统 PATH；用户需自行确保已安装（macOS: brew install ffmpeg）
 
+
 def clean_text(text: str) -> str:
-    """清理识别出的无用括号和特殊符号，并智能转换标点"""
+    """
+    Business Logic（为什么需要这个函数）:
+        Whisper 识别结果常包含无意义的括号描述（如 [音乐] (笑声)），
+        以及英文标点混用中文的问题；清理后才能作为高质量标注入库。
+
+    Code Logic（这个函数做什么）:
+        strip 后依次删除方括号/圆括号/中括号内容；若文本含中文，
+        将英文逗号/问号/感叹号等转换为对应中文标点，最后再 strip。
+    """
     text = text.strip()
     text = re.sub(r'\[.*?\]', '', text)
     text = re.sub(r'\(.*?\)', '', text)
     text = re.sub(r'【.*?】', '', text)
 
-    # 🌟 修复标点：如果句子包含中文，强制将英文标点转换为中文标点
-    if re.search(r'[\u4e00-\u9fa5]', text):
+    # 修复标点：如果句子包含中文，强制将英文标点转换为中文标点
+    if re.search(r'[一-龥]', text):
         text = text.replace(',', '，').replace('?', '？').replace('!', '！').replace(':', '：').replace(';', '；')
 
     return text.strip()
 
 
-_cpu_whisper_model: WhisperModel | None = None
+def _get_asr_cfg() -> dict[str, Any]:
+    """
+    Business Logic（为什么需要这个函数）:
+        library_builder 需要调用 ASR 服务，而 ASR 端点信息（api_base/api_key/model/language）
+        存在 config.json 的 asr 节；统一从 settings 读取，避免硬编码。
+
+    Code Logic（这个函数做什么）:
+        调用 settings.get_config() 返回完整配置，提取 asr 子字典返回。
+    """
+    cfg = get_config()
+    return cfg.get("asr", {})  # type: ignore[return-value]
 
 
-def get_cpu_whisper_model() -> WhisperModel:
-    global _cpu_whisper_model
-    if _cpu_whisper_model is None:
-        print("⏳ 正在加载本地纯 CPU 识别模型 (Whisper-Small)...")
-        model_path = os.path.abspath(os.path.join(current_dir, "..", "..", "models", "whisper-small"))
-        if not os.path.exists(model_path) or not os.listdir(model_path):
-            raise Exception(f"❌ 找不到离线模型文件！请确保已经运行过 download_models.py，并将模型存放在: {model_path}")
-        _cpu_whisper_model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=False)
-        print("✅ CPU 离线识别模型加载完毕！")
-    return _cpu_whisper_model
+def _transcribe_segment(filepath: str, asr_cfg: dict[str, Any]) -> str:
+    """
+    Business Logic（为什么需要这个函数）:
+        library_builder 逐段调用 ASR 转录；将单次转录调用抽成独立函数，
+        便于统一错误处理和日志记录，两个入口函数复用。
+
+    Code Logic（这个函数做什么）:
+        调用 asr_transcribe（verbose_json 格式），拼接所有 segment 的 text；
+        如果 ASR 服务不可达或转录失败，捕获异常打印警告并返回空字符串。
+    """
+    try:
+        result = asr_transcribe(
+            filepath,
+            api_base=asr_cfg.get("api_base", "http://127.0.0.1:9900/v1"),
+            api_key=asr_cfg.get("api_key", ""),
+            model=asr_cfg.get("model", "whisper-small"),
+            language=asr_cfg.get("language", "zh"),
+            response_format="verbose_json",
+            prompt="以下是一段带标点符号的完整中文句子。",
+        )
+        if isinstance(result, dict):
+            segments = result.get("segments", [])
+            if segments:
+                return "".join(clean_text(seg.get("text", "")) for seg in segments)
+            return clean_text(result.get("text", ""))
+        return clean_text(str(result))
+    except AsrError as e:
+        print(f"⚠️ ASR 服务转录失败: {e}")
+        return ""
+    except Exception as e:
+        print(f"⚠️ ASR 转录异常: {e}")
+        return ""
 
 
-def build_character_dataset(char_id: str, char_name: str, audio_paths: list, output_dir: str, min_silence_len: float,
-                            progress_callback):
+def build_character_dataset(
+    char_id: str,
+    char_name: str,
+    audio_paths: list[str],
+    output_dir: str,
+    min_silence_len: float,
+    progress_callback: Callable[..., None],
+) -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        用户上传参考音频后，系统需要自动切分、转录、打标，生成角色素材库 library.json，
+        这是整个「角色素材库」核心能力的入口函数（新建角色流程）。
+
+    Code Logic（这个函数做什么）:
+        1) 对每个上传文件独立做静音切分（split_on_silence）；
+        2) 对每个有效音频段（>0.5s）调 ASR 服务转录；
+        3) 转录成功的段保存为 voice_lib/{char_id}_NNNN.wav，写入 library.json；
+        4) 全程通过 progress_callback 上报进度。
+    """
     try:
         progress_callback(5, f"正在初始化目录配置...")
         char_dir = os.path.join(output_dir, char_id)
@@ -49,12 +110,14 @@ def build_character_dataset(char_id: str, char_name: str, audio_paths: list, out
 
         progress_callback(10, "🔪 正在对每个上传的文件进行独立切分处理...")
         silence_ms = int(min_silence_len * 1000)
-        chunks = []
+        chunks: list[AudioSegment] = []
 
-        # 🌟 核心修改：不再将所有文件拼接，而是逐个独立处理
+        # 核心：不再将所有文件拼接，而是逐个独立处理
         for p in audio_paths:
             audio = AudioSegment.from_file(p)
-            file_chunks = split_on_silence(audio, min_silence_len=silence_ms, silence_thresh=-40, keep_silence=150)
+            file_chunks: list[AudioSegment] = split_on_silence(
+                audio, min_silence_len=silence_ms, silence_thresh=-40, keep_silence=150
+            )
 
             # 如果文件本身没有触发切分条件（比如预先切好的短句），保底将其作为一个完整的片段加入
             if not file_chunks and len(audio) > 0:
@@ -62,40 +125,29 @@ def build_character_dataset(char_id: str, char_name: str, audio_paths: list, out
             else:
                 chunks.extend(file_chunks)
 
-        library_data = []
+        library_data: list[dict[str, Any]] = []
         total_chunks = len(chunks)
         valid_chunks = 0
 
-        whisper_model = get_cpu_whisper_model()
+        asr_cfg = _get_asr_cfg()
 
         for i, chunk in enumerate(chunks):
             current_dur = len(chunk) / 1000.0
-            if current_dur < 0.5: continue
+            if current_dur < 0.5:
+                continue
 
-            progress_callback(15 + int((i / total_chunks) * 80), f"💻 离线识别中: 第 {i + 1}/{total_chunks} 段音频...")
+            progress_callback(15 + int((i / total_chunks) * 80), f"💻 识别中: 第 {i + 1}/{total_chunks} 段音频...")
 
             filename = f"{char_id}_{i:04d}.wav"
             filepath = os.path.join(voice_lib_dir, filename)
             chunk.export(filepath, format="wav")
 
-            try:
-                text = whisper_model.transcribe(
-                    filepath,
-                    language="zh",
-                    initial_prompt="以下是一段带标点符号的完整中文句子。",
-                    vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=500),
-                    beam_size=5
-                )[0]
-                text = "".join([clean_text(s.text) for s in text])
-            except Exception as e:
-                print(f"⚠️ 本地 CPU 识别失败: {e}")
-                text = ""
+            text = _transcribe_segment(filepath, asr_cfg)
 
             if not text:
                 try:
                     os.remove(filepath)
-                except:
+                except Exception:
                     pass
                 continue
 
@@ -115,7 +167,7 @@ def build_character_dataset(char_id: str, char_name: str, audio_paths: list, out
         for p in audio_paths:
             try:
                 os.remove(p)
-            except:
+            except Exception:
                 pass
 
         progress_callback(100, f"🎉 角色生成完毕！共提取 {valid_chunks} 条有效素材。", status="success")
@@ -124,8 +176,24 @@ def build_character_dataset(char_id: str, char_name: str, audio_paths: list, out
         progress_callback(0, f"❌ 处理失败: {str(e)}", status="error")
 
 
-def append_character_dataset(char_id: str, audio_paths: list, output_dir: str, min_silence_len: float,
-                             progress_callback):
+def append_character_dataset(
+    char_id: str,
+    audio_paths: list[str],
+    output_dir: str,
+    min_silence_len: float,
+    progress_callback: Callable[..., None],
+) -> None:
+    """
+    Business Logic（为什么需要这个函数）:
+        用户向已有角色补充新音频时，系统需要追加切分、转录、入库，
+        且不覆盖已有素材（追加到 library.json 的 items 末尾）。
+
+    Code Logic（这个函数做什么）:
+        1) 读取已有 library.json，找到当前最大 id 作为新段的起始 id；
+        2) 对新上传文件独立做静音切分；
+        3) 对每个有效段调 ASR 服务转录，保存文件，写入 library.json；
+        4) 全程通过 progress_callback 上报进度。
+    """
     try:
         progress_callback(5, f"正在初始化目录配置...")
         char_dir = os.path.join(output_dir, char_id)
@@ -134,18 +202,20 @@ def append_character_dataset(char_id: str, audio_paths: list, output_dir: str, m
         json_path = os.path.join(char_dir, "library.json")
 
         with open(json_path, "r", encoding="utf-8") as f:
-            db_content = json.load(f)
-        existing_items = db_content.get("items", [])
+            db_content: dict[str, Any] = json.load(f)
+        existing_items: list[dict[str, Any]] = db_content.get("items", [])
         start_chunk_index = max([item.get("id", -1) for item in existing_items] + [-1]) + 1
 
         progress_callback(10, "🔪 正在对新上传的文件进行独立切分处理...")
         silence_ms = int(min_silence_len * 1000)
-        chunks = []
+        chunks: list[AudioSegment] = []
 
-        # 🌟 核心修改：同样对补充进来的音频进行独立遍历，避免拼贴导致的切分偏移
+        # 同样对补充进来的音频进行独立遍历，避免拼贴导致的切分偏移
         for p in audio_paths:
             audio = AudioSegment.from_file(p)
-            file_chunks = split_on_silence(audio, min_silence_len=silence_ms, silence_thresh=-40, keep_silence=150)
+            file_chunks: list[AudioSegment] = split_on_silence(
+                audio, min_silence_len=silence_ms, silence_thresh=-40, keep_silence=150
+            )
 
             if not file_chunks and len(audio) > 0:
                 chunks.append(audio)
@@ -154,38 +224,27 @@ def append_character_dataset(char_id: str, audio_paths: list, output_dir: str, m
 
         total_chunks = len(chunks)
         valid_chunks = 0
-        new_library_data = []
+        new_library_data: list[dict[str, Any]] = []
 
-        whisper_model = get_cpu_whisper_model()
+        asr_cfg = _get_asr_cfg()
 
         for i, chunk in enumerate(chunks):
             current_dur = len(chunk) / 1000.0
-            if current_dur < 0.5: continue
+            if current_dur < 0.5:
+                continue
 
-            progress_callback(15 + int((i / total_chunks) * 80), f"💻 离线识别中: 第 {i + 1}/{total_chunks} 段...")
+            progress_callback(15 + int((i / total_chunks) * 80), f"💻 识别中: 第 {i + 1}/{total_chunks} 段...")
             chunk_id = start_chunk_index + valid_chunks
             filename = f"{char_id}_append_{chunk_id:04d}_{uuid.uuid4().hex[:4]}.wav"
             filepath = os.path.join(voice_lib_dir, filename)
             chunk.export(filepath, format="wav")
 
-            try:
-                text = whisper_model.transcribe(
-                    filepath,
-                    language="zh",
-                    initial_prompt="以下是一段带标点符号的完整中文句子。",
-                    vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=500),
-                    beam_size=5
-                )[0]
-                text = "".join([clean_text(s.text) for s in text])
-            except Exception as e:
-                print(f"⚠️ 本地 CPU 识别失败: {e}")
-                text = ""
+            text = _transcribe_segment(filepath, asr_cfg)
 
             if not text:
                 try:
                     os.remove(filepath)
-                except:
+                except Exception:
                     pass
                 continue
 
@@ -205,7 +264,7 @@ def append_character_dataset(char_id: str, audio_paths: list, output_dir: str, m
         for p in audio_paths:
             try:
                 os.remove(p)
-            except:
+            except Exception:
                 pass
 
         progress_callback(100, f"🎉 补充完成！成功追加 {valid_chunks} 条新素材。", status="success")

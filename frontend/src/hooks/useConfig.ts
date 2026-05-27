@@ -15,6 +15,7 @@ interface UseConfigResult {
   save: (c: ConfigSaveRequest) => Promise<void>;
   testLlm: () => Promise<boolean>;
   testTts: () => Promise<boolean>;
+  testAsr: () => Promise<boolean>;
   refresh: () => void;
 }
 
@@ -86,5 +87,14 @@ export function useConfig(): UseConfigResult {
     }
   }, []);
 
-  return { config, loading, saving, error, save, testLlm, testTts, refresh };
+  const testAsr = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await verifyActiveConfig();
+      return res.asr_status === 'success' || res.asr_status === 'local_ready';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  return { config, loading, saving, error, save, testLlm, testTts, testAsr, refresh };
 }

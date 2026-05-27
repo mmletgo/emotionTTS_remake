@@ -114,15 +114,25 @@ export interface TtsConfig {
   api_key: string;
 }
 
+export interface AsrConfig {
+  type: 'local' | 'cloud';
+  api_base: string;
+  api_key: string;
+  model: string;
+  language: string;
+}
+
 export interface Config {
   llm: LlmConfig;
   tts: TtsConfig;
+  asr: AsrConfig;
 }
 
 export interface VerifyActiveResponse {
   status: 'success' | 'error';
   tts_status: 'success' | 'local_ready' | 'error';
   llm_status: 'success' | 'error';
+  asr_status: 'success' | 'local_ready' | 'error';
 }
 
 // ============================================================
@@ -133,6 +143,7 @@ export interface ConfigSaveRequest {
   llm_active_type: string;
   llm_configs: Record<string, LlmProviderConfig>;
   tts: Partial<TtsConfig>;
+  asr?: Partial<AsrConfig>;
 }
 
 export interface MatchRequest {
