@@ -310,9 +310,17 @@ if [[ "$ENABLE_LOCAL_TTS" == "true" && "$INDEXTTS_ENV_CHOICE" == "a" ]]; then
     fi
     success "venv 校验通过: $PYTHON_BIN"
 
-    # 询问 IndexTTS checkpoints 路径
+    # 自动探测 IndexTTS checkpoints —— 优先级:
+    #   1) HuggingFace cache (huggingface-cli download 默认位置，含 snapshots/<hash> 结构)
+    #   2) <venv_parent>/checkpoints (IndexTTS 仓库内常见位置)
     VENV_PARENT="$(dirname "$EXISTING_VENV")"
     DEFAULT_CKPT="$VENV_PARENT/checkpoints"
+    HF_HUB_DIR="${HF_HOME:-$HOME/.cache/huggingface}/hub"
+    HF_SNAPSHOT="$(ls -td "$HF_HUB_DIR"/models--IndexTeam--IndexTTS-2/snapshots/*/ 2>/dev/null | head -1)"
+    if [[ -n "$HF_SNAPSHOT" && -f "${HF_SNAPSHOT}gpt.pth" ]]; then
+        DEFAULT_CKPT="${HF_SNAPSHOT%/}"
+        info "检测到 HuggingFace cache 中的 IndexTTS-2 模型: $DEFAULT_CKPT"
+    fi
     read -r -p "  IndexTTS checkpoints 目录（默认 ${DEFAULT_CKPT}）: " CKPT_INPUT
     INDEXTTS_MODEL_DIR="${CKPT_INPUT:-$DEFAULT_CKPT}"
     INDEXTTS_MODEL_DIR="${INDEXTTS_MODEL_DIR/#\~/$HOME}"
