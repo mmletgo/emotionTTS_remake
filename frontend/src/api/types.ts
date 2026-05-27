@@ -25,6 +25,8 @@ export interface Character {
   item_count: number;
   emotion_count: number;
   updated_at: string;
+  /** 试听样本音频 URL（后端取 items[0]，可能为 undefined 表示素材库为空） */
+  preview_audio_url?: string;
 }
 
 export interface EmotionTag {

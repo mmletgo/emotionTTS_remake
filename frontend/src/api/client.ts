@@ -156,6 +156,7 @@ export async function getCharacters(): Promise<Character[]> {
     item_count: r.count ?? 0,
     emotion_count: r.emotion_count ?? 0,
     updated_at: '',
+    preview_audio_url: r.preview_audio || undefined,
   }));
 }
 

@@ -86,6 +86,7 @@
 }
 .btn-icon:hover { background: var(--accent-soft); color: var(--accent); }
 .btn-icon:active { transform: scale(.94); }
+.btn-icon:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 .btn-icon.is-playing { background: var(--accent); color: var(--accent-ink); }
 
 /* Script card (Step 2) */

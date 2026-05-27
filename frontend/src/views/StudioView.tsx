@@ -30,6 +30,7 @@ import { useSequentialPlay } from '@/hooks/useSequentialPlay'
 import { useMergeOutputs } from '@/hooks/useMergeOutputs'
 import { useUiSettings } from '@/state/uiSettings'
 import { exportSegmentsAsZip } from '@/utils/exportZip'
+import { useApp } from '@/state/AppContext'
 
 interface StudioViewProps {
   characters: Character[]
@@ -114,6 +115,7 @@ export default function StudioView({
   onSynthesized,
 }: StudioViewProps) {
   // ── 通用状态（所有 hooks 必须在任何 early return 之前）──────────
+  const { setPlayer } = useApp()
   const [mode, setMode] = useState<StudioMode>('single')
   const [script, setScript] = useState<string>('那时候我并不知道，原来一句轻飘飘的"再见"，会在多年之后还烫着我的舌尖。')
   const [castPickerOpen, setCastPickerOpen] = useState<boolean>(false)
@@ -170,6 +172,25 @@ export default function StudioView({
     setActiveCandidateIdx(0)
     setSingleOverrides(makeDefaultOverrides())
   }, [activeChar?.char_id])
+
+  /**
+   * Business Logic:
+   *   用户在「选个声音」卡片上点试听按钮时，把角色的 preview_audio_url 推进
+   *   全局 BottomPlayer 播放，让用户在切角色前能快速核对音色。
+   *
+   * Code Logic:
+   *   activeChar 为空或缺 preview_audio_url 时静默忽略；否则调 setPlayer
+   *   写入 src/title/sub 并将 playing 置 true，BottomPlayer 会消费这次变更并播放。
+   */
+  const previewActiveChar = useCallback((): void => {
+    if (!activeChar || !activeChar.preview_audio_url) return
+    setPlayer({
+      src: activeChar.preview_audio_url,
+      title: activeChar.name,
+      sub: '试听样本',
+      playing: true,
+    })
+  }, [activeChar, setPlayer])
 
   // ============================================================
   // 单句模式决策树
@@ -829,8 +850,12 @@ export default function StudioView({
                 <div className="cast-actions">
                   <button
                     className="btn-icon"
-                    title="试听样本"
-                    onClick={(e) => e.stopPropagation()}
+                    title={activeChar.preview_audio_url ? '试听样本' : '该角色暂无试听样本'}
+                    disabled={!activeChar.preview_audio_url}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      previewActiveChar()
+                    }}
                   >
                     <Icon name="play" size={16} />
                   </button>
@@ -1083,6 +1108,17 @@ export default function StudioView({
                   </div>
                 </div>
                 <div className="cast-actions">
+                  <button
+                    className="btn-icon"
+                    title={activeChar.preview_audio_url ? '试听样本' : '该角色暂无试听样本'}
+                    disabled={!activeChar.preview_audio_url}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      previewActiveChar()
+                    }}
+                  >
+                    <Icon name="play" size={16} />
+                  </button>
                   <button
                     className="btn-icon"
                     title="切换角色"
