@@ -31,6 +31,7 @@ export function usePolling(
     progress: 0,
     msg: '等待中...',
     status: 'running',
+    stage: null,
   });
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
