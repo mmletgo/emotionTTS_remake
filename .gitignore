@@ -32,3 +32,6 @@ models/whisper-small/.cache/
 .idea/
 .vscode/
 *.swp
+
+# Claude Code 工作目录（agent 临时 worktree 等）
+.claude/
