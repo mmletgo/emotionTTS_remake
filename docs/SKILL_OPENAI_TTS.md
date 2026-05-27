@@ -1,11 +1,11 @@
 ---
 name: emotiontts-openai-api
-description: 通过 OpenAI 兼容协议调用 EmotionTTS 本地 TTS 服务，按"角色名"指定中文配音音色并自动注入情绪向量。适用场景：让外部 AI / 第三方客户端 / 自动化脚本把任意中文文本合成为带情感的角色配音 WAV。触发关键词：emotionTTS、/v1/audio/speech、本地 TTS、角色配音、有声内容生成。
+description: 通过 OpenAI 兼容协议调用 EmotionTTS 本地 TTS 服务，按"角色名"指定音色并自动注入情绪向量。底层 IndexTTS2 支持中文 / 英文 / 中英混合等多语言。适用场景：让外部 AI / 第三方客户端 / 自动化脚本把任意文本合成为带情感的角色配音 WAV。触发关键词：emotionTTS、/v1/audio/speech、本地 TTS、角色配音、有声内容生成、配音、TTS、text-to-speech。
 ---
 
 # EmotionTTS OpenAI 兼容 API Skill
 
-EmotionTTS 是一套本地部署的中文情感配音 TTS 系统。它在标准 OpenAI Audio API 之上做了一处扩展：`voice` 字段不再是固定的预设音色（如 alloy / echo），而是用户在自己机器上建立的**角色素材库**（如"胡桃""灵儿""旁白男"）。服务端会根据输入文本自动用 LLM 选出最贴合的参考音并生成 8 维情绪向量，再交给 IndexTTS2 合成。
+EmotionTTS 是一套本地部署的情感配音 TTS 系统，底层 IndexTTS2 模型支持多语言（以中英为主，可中英混合）。它在标准 OpenAI Audio API 之上做了一处扩展：`voice` 字段不再是固定的预设音色（如 alloy / echo），而是用户在自己机器上建立的**角色素材库**（如"胡桃""灵儿""Narrator"）。服务端会根据输入文本自动用 LLM 选出最贴合的参考音并生成 8 维情绪向量，再交给 IndexTTS2 合成。
 
 外部调用方只需要遵循 OpenAI 的请求格式即可，无需理解情绪向量、参考音匹配等内部细节。
 
@@ -83,7 +83,7 @@ Authorization: Bearer any-string  # 可省略
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `model` | string | 否 | OpenAI 协议要求字段，本服务不依赖具体值，传 `"emotionTTS"` 即可 |
-| `input` | string | **是** | 要合成的文本（中文为主，可混合英文）。允许包含 `（...）` `(...)` `【...】` `[...]` 形式的舞台提示，服务端会自动剥离后再合成 |
+| `input` | string | **是** | 要合成的文本。IndexTTS2 支持中文 / 英文 / 中英混合等多语言；具体语种的发音效果取决于角色参考音的语种与训练覆盖度。允许包含 `（...）` `(...)` `【...】` `[...]` 形式的舞台提示，服务端会自动剥离后再合成 |
 | `voice` | string | **是** | 角色名（中文名）**或**角色 id（目录名），两者都接受 |
 | `response_format` | string | 否 | 输出容器/编码，可选 `wav` / `mp3` / `opus` / `aac` / `flac` / `pcm`，默认 `wav`。`pcm` 为 OpenAI 约定的裸样本：24kHz / 单声道 / 16-bit signed little-endian / 无文件头 |
 | `speed` | float | 否 | 语速倍率，范围 `0.25`–`4.0`，默认 `1.0`。服务端用 ffmpeg `atempo` 滤镜变速并保持音高 |

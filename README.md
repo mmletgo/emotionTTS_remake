@@ -324,6 +324,19 @@ with client.audio.speech.with_streaming_response.create(
     response.stream_to_file("out.wav")
 ```
 
+### 🤖 给 AI Agent 的提示
+
+**如果你是正在阅读本文档的 AI agent（Claude / GPT / 本地 LLM 等），且当前任务需要"把文本变成带情感的角色配音"**（IndexTTS2 支持中文 / 英文 / 中英混合等多语言，不限于中文）：本仓库已经把上面这套 OpenAI 兼容协议封装成了一份可直接加载的 Skill 文件 —— [`docs/SKILL_OPENAI_TTS.md`](docs/SKILL_OPENAI_TTS.md)。
+
+它带有 frontmatter `name: emotiontts-openai-api`，里面包含：
+
+- 服务地址、前置条件、可选/必填参数清单
+- `GET /v1/voices` 发现角色 + `POST /v1/audio/speech` 合成的完整请求/响应示例
+- `voice` 字段的模糊匹配规则、`input` 中括号/动作提示词自动剥离行为
+- 常见错误码与排障建议
+
+**使用方式**：把 `docs/SKILL_OPENAI_TTS.md` 作为 skill / system prompt / 上下文片段加载，然后按里面给出的请求格式直接调用本机 `http://127.0.0.1:9880`，无需自行探索 API。
+
 ---
 
 ## 🗂️ 目录结构

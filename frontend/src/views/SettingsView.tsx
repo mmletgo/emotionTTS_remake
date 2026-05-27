@@ -17,7 +17,8 @@ import { useConfig } from '@/hooks/useConfig'
 import { useUiSettings } from '@/state/uiSettings'
 import { useApp } from '@/state/AppContext'
 import { ACCENT_SWATCHES } from '@/state/accentSwatches'
-import type { LlmProvider } from '@/api/types'
+import { ASR_LANGUAGE_OPTIONS } from '@/api/types'
+import type { AsrLanguage, LlmProvider } from '@/api/types'
 import type { Theme } from '@/state/AppContext'
 
 type TtsDeployType = 'local' | 'cloud'
@@ -73,6 +74,7 @@ export default function SettingsView() {
   const [asrDeploy, setAsrDeploy] = useState<AsrDeployType>('local')
   const [asrApiBase, setAsrApiBase] = useState<string>('http://127.0.0.1:9900/v1')
   const [asrApiKey, setAsrApiKey] = useState<string>('')
+  const [asrLanguage, setAsrLanguage] = useState<AsrLanguage>('zh')
   const [asrStatus, setAsrStatus] = useState<'idle' | 'ok' | 'err'>('idle')
   const [asrStatusMsg, setAsrStatusMsg] = useState<string>('')
   const [asrTesting, setAsrTesting] = useState<boolean>(false)
@@ -103,6 +105,10 @@ export default function SettingsView() {
       setAsrDeploy(config.asr.type)
       setAsrApiBase(config.asr.api_base)
       setAsrApiKey(config.asr.api_key)
+      // 兼容旧 config：language 缺失或非已知值时回落到 'zh'
+      const knownLangs = ASR_LANGUAGE_OPTIONS.map((o) => o.value)
+      const cfgLang = config.asr.language as AsrLanguage
+      setAsrLanguage(knownLangs.includes(cfgLang) ? cfgLang : 'zh')
     }
   }, [config])
 
@@ -173,7 +179,7 @@ export default function SettingsView() {
           api_base: asrApiBase,
           api_key: asrApiKey,
           model: config.asr?.model ?? 'whisper-small',
-          language: config.asr?.language ?? 'zh',
+          language: asrLanguage,
         },
       })
       setSaveStatus('ok')
@@ -182,7 +188,7 @@ export default function SettingsView() {
       setSaveStatus('err')
       setSaveStatusMsg(err instanceof Error ? err.message : String(err))
     }
-  }, [config, save, llmProvider, llmApiBase, llmApiKey, llmModel, ttsDeploy, asrDeploy, asrApiBase, asrApiKey])
+  }, [config, save, llmProvider, llmApiBase, llmApiKey, llmModel, ttsDeploy, asrDeploy, asrApiBase, asrApiKey, asrLanguage])
 
   const toggleApiPriority = useCallback(() => {
     updateUi({ api_priority: !uiSettings.api_priority })
@@ -304,6 +310,27 @@ export default function SettingsView() {
               value={asrDeploy}
               onChange={setAsrDeploy}
             />
+          </div>
+          <div />
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">
+            默认转写语种
+            <small>新建/追加角色未指定时的兜底语种</small>
+          </div>
+          <div className="settings-value">
+            <select
+              className="settings-select"
+              value={asrLanguage}
+              style={{ maxWidth: '180px' }}
+              disabled={saving}
+              onChange={(e) => setAsrLanguage(e.target.value as AsrLanguage)}
+            >
+              {ASR_LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
           <div />
         </div>

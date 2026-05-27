@@ -174,7 +174,7 @@ export default function AdvancedSheet({
         <div className="sheet__head">
           <div>
             <div className="sheet__title">高级模式</div>
-            <div className="sheet__subtitle">独立控制四个合成参数，null = 跟随 AI 自动</div>
+            <div className="sheet__subtitle">手动覆盖 AI 匹配 · 留空跟随 AI</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="关闭">
             <Icon name="close" size={14} />
@@ -183,10 +183,115 @@ export default function AdvancedSheet({
 
         <div className="sheet__body">
 
-          {/* ── Section 1: 参考音 ──────────────────────────── */}
+          {/* ── 信号流示意（解释四个参数的层级关系） ────── */}
+          <div className="adv-flow-card">
+            <div className="adv-flow-row">
+              <span className="adv-flow-chip adv-flow-chip--upstream">情绪锁定</span>
+              <span className="adv-flow-arrow">约束</span>
+              <span className="adv-flow-mid">AI 决策</span>
+            </div>
+            <div className="adv-flow-row">
+              <span className="adv-flow-chip">参考音</span>
+              <span className="adv-flow-op">+</span>
+              <span className="adv-flow-chip">向量</span>
+              <span className="adv-flow-op">×</span>
+              <span className="adv-flow-chip">Alpha</span>
+              <span className="adv-flow-arrow">合成引擎</span>
+            </div>
+            <div className="adv-flow-foot">
+              参考音决定音色与自带情绪；向量 × Alpha 在其上叠加。同主情绪时 Alpha 自动 ×0.6 防爆音。
+            </div>
+          </div>
+
+          {/* ── ① 上游约束 group ─────────────────────────── */}
+          <div className="adv-stage adv-stage--upstream">
+            <span className="adv-stage-num">①</span>
+            <span className="adv-stage-label">上游约束</span>
+            <span className="adv-stage-desc">影响 AI 决策，不直接进引擎</span>
+          </div>
+
+          {/* 情绪锁定 ───────────────────────────────────── */}
           <div className="adv-section">
             <div className="adv-section-head">
-              <h4>参考音</h4>
+              <div className="adv-section-title">
+                <h4>情绪锁定</h4>
+                <span className="adv-section-role">约束 AI 怎么挑参考音 + 怎么生成向量</span>
+              </div>
+              <div className="adv-badges">
+                <span className={`adv-badge${emotionIsOverride ? ' adv-badge--manual' : ' adv-badge--auto'}`}>
+                  {emotionIsOverride ? '手动' : (llmCache ? 'AI 自动' : '未匹配')}
+                </span>
+                {emotionIsOverride && (
+                  <button className="adv-reset-btn" onClick={resetEmotion} title="重置为 AI 自动">
+                    ↺ 重置为 AI
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!emotionIsOverride && effectiveEmotion && (
+              <div className="adv-placeholder-hint">
+                AI 诊断：{effectiveEmotion.primary} · {effectiveEmotion.intensity}
+                {effectiveEmotion.complex && ` · ${effectiveEmotion.complex}`}
+                <span className="adv-placeholder-sub">（操作下方控件即手动锁定）</span>
+              </div>
+            )}
+            {!emotionIsOverride && !effectiveEmotion && (
+              <div className="adv-placeholder-hint">尚未匹配，操作下方控件即手动锁定</div>
+            )}
+
+            <div className="adv-lock-row">
+              <select
+                className="adv-select"
+                value={emotionIsOverride
+                  ? (localOverrides.emotion?.primary ?? '')
+                  : (effectiveEmotion?.primary ?? '')
+                }
+                onChange={(e) => handleEmotionChange('primary', e.target.value as EmotionPrimary)}
+              >
+                <option value="">（跟随 AI）</option>
+                {EMO_LABELS.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+              <select
+                className="adv-select"
+                value={emotionIsOverride
+                  ? (localOverrides.emotion?.intensity ?? 'Medium')
+                  : (effectiveEmotion?.intensity ?? 'Medium')
+                }
+                onChange={(e) => handleEmotionChange('intensity', e.target.value as EmotionIntensity)}
+              >
+                {EMO_INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+              <input
+                type="text"
+                className="adv-input"
+                placeholder="复合情绪：嘲讽、傲娇..."
+                value={emotionIsOverride
+                  ? (localOverrides.emotion?.complex ?? '')
+                  : (effectiveEmotion?.complex ?? '')
+                }
+                onChange={(e) => handleEmotionChange('complex', e.target.value)}
+              />
+            </div>
+            <div className="adv-field-note">
+              intensity 仅为语义标签传给 LLM，实际张力由下方 Alpha 控制。
+            </div>
+          </div>
+
+          {/* ── ② 下游信号 group ─────────────────────────── */}
+          <div className="adv-stage adv-stage--signal">
+            <span className="adv-stage-num">②</span>
+            <span className="adv-stage-label">下游信号</span>
+            <span className="adv-stage-desc">直接送进 TTS 引擎</span>
+          </div>
+
+          {/* 参考音 ─────────────────────────────────────── */}
+          <div className="adv-section">
+            <div className="adv-section-head">
+              <div className="adv-section-title">
+                <h4>参考音</h4>
+                <span className="adv-section-role">音色 + 自带情绪底色</span>
+              </div>
               <div className="adv-badges">
                 <span className={`adv-badge${refIsOverride ? ' adv-badge--manual' : ' adv-badge--auto'}`}>
                   {refIsOverride ? '手动' : (llmCache ? 'AI 自动' : '未匹配')}
@@ -230,72 +335,13 @@ export default function AdvancedSheet({
             </div>
           </div>
 
-          {/* ── Section 2: 情绪锁定 ────────────────────────── */}
+          {/* 8 维情绪向量 ───────────────────────────────── */}
           <div className="adv-section">
             <div className="adv-section-head">
-              <h4>情绪锁定</h4>
-              <div className="adv-badges">
-                <span className={`adv-badge${emotionIsOverride ? ' adv-badge--manual' : ' adv-badge--auto'}`}>
-                  {emotionIsOverride ? '手动' : (llmCache ? 'AI 自动' : '未匹配')}
-                </span>
-                {emotionIsOverride && (
-                  <button className="adv-reset-btn" onClick={resetEmotion} title="重置为 AI 自动">
-                    ↺ 重置为 AI
-                  </button>
-                )}
+              <div className="adv-section-title">
+                <h4>情绪向量（8 通道）</h4>
+                <span className="adv-section-role">在参考音之上叠加情绪 · 各维 0–1</span>
               </div>
-            </div>
-
-            {!emotionIsOverride && effectiveEmotion && (
-              <div className="adv-placeholder-hint">
-                AI 诊断：{effectiveEmotion.primary} · {effectiveEmotion.intensity}
-                {effectiveEmotion.complex && ` · ${effectiveEmotion.complex}`}
-                <span style={{ marginLeft: 8, fontSize: '11px', opacity: 0.6 }}>（操作下方控件即手动锁定）</span>
-              </div>
-            )}
-            {!emotionIsOverride && !effectiveEmotion && (
-              <div className="adv-placeholder-hint">尚未匹配，操作下方控件即手动锁定</div>
-            )}
-
-            <div className="adv-lock-row">
-              <select
-                className="adv-select"
-                value={emotionIsOverride
-                  ? (localOverrides.emotion?.primary ?? '')
-                  : (effectiveEmotion?.primary ?? '')
-                }
-                onChange={(e) => handleEmotionChange('primary', e.target.value as EmotionPrimary)}
-              >
-                <option value="">（跟随 AI）</option>
-                {EMO_LABELS.map((e) => <option key={e} value={e}>{e}</option>)}
-              </select>
-              <select
-                className="adv-select"
-                value={emotionIsOverride
-                  ? (localOverrides.emotion?.intensity ?? 'Medium')
-                  : (effectiveEmotion?.intensity ?? 'Medium')
-                }
-                onChange={(e) => handleEmotionChange('intensity', e.target.value as EmotionIntensity)}
-              >
-                {EMO_INTENSITIES.map((i) => <option key={i} value={i}>{i}</option>)}
-              </select>
-              <input
-                type="text"
-                className="adv-input"
-                placeholder="复合情绪：嘲讽、傲娇..."
-                value={emotionIsOverride
-                  ? (localOverrides.emotion?.complex ?? '')
-                  : (effectiveEmotion?.complex ?? '')
-                }
-                onChange={(e) => handleEmotionChange('complex', e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* ── Section 3: 8 维情绪向量 ───────────────────── */}
-          <div className="adv-section">
-            <div className="adv-section-head">
-              <h4>情绪向量（8 通道）</h4>
               <div className="adv-badges">
                 <span className={`adv-badge${vectorIsOverride ? ' adv-badge--manual' : ' adv-badge--auto'}`}>
                   {vectorIsOverride ? '手动' : (llmCache?.emo_vector ? 'AI 自动' : '默认')}
@@ -326,12 +372,16 @@ export default function AdvancedSheet({
                 </div>
               ))}
             </div>
+            <div className="adv-field-note">建议各维总和 ≤ 0.8，超出易出现颤抖 / 过曝。</div>
           </div>
 
-          {/* ── Section 4: Alpha ────────────────────────────── */}
+          {/* Alpha ──────────────────────────────────────── */}
           <div className="adv-section">
             <div className="adv-section-head">
-              <h4>全局情感张力 · Alpha</h4>
+              <div className="adv-section-title">
+                <h4>Alpha · 向量混合强度</h4>
+                <span className="adv-section-role">向量在参考音之上的叠加权重</span>
+              </div>
               <div className="adv-badges">
                 <span className={`adv-badge${alphaIsOverride ? ' adv-badge--manual' : ' adv-badge--auto'}`}>
                   {alphaIsOverride ? '手动' : (llmCache ? 'AI 自动' : '默认')}
@@ -357,7 +407,9 @@ export default function AdvancedSheet({
                 {effectiveAlpha.toFixed(2)}
               </span>
             </div>
-            <div className="adv-alpha-hint">建议各通道总和 ≤ 0.8，避免饱和失真</div>
+            <div className="adv-field-note">
+              默认 0.65。目标 / 参考主情绪相同时引擎自动 ×0.6 防爆音。
+            </div>
           </div>
 
         </div>

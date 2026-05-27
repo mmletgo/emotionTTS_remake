@@ -103,25 +103,28 @@ def _apply_llm_tags(
         print(f"⚠️ LLM 打标跳过（配置不可用）: {e}")
 
 
-def _transcribe_segment(filepath: str, asr_cfg: dict[str, Any]) -> str:
+def _transcribe_segment(filepath: str, asr_cfg: dict[str, Any], language: str) -> str:
     """
     Business Logic（为什么需要这个函数）:
         library_builder 逐段调用 ASR 转录；将单次转录调用抽成独立函数，
         便于统一错误处理和日志记录，两个入口函数复用。
+        language 由建/追加角色入口传入（用户在前端选择，默认 "zh"），优先级高于 config.json 默认。
 
     Code Logic（这个函数做什么）:
         调用 asr_transcribe（verbose_json 格式），拼接所有 segment 的 text；
+        prompt 仅在 language="zh" 时给中文 hint（避免给非中文 Whisper 推理引入幻觉）；
         如果 ASR 服务不可达或转录失败，捕获异常打印警告并返回空字符串。
     """
+    prompt: str | None = "以下是一段带标点符号的完整中文句子。" if language == "zh" else None
     try:
         result = asr_transcribe(
             filepath,
             api_base=asr_cfg.get("api_base", "http://127.0.0.1:9900/v1"),
             api_key=asr_cfg.get("api_key", ""),
             model=asr_cfg.get("model", "whisper-small"),
-            language=asr_cfg.get("language", "zh"),
+            language=language,
             response_format="verbose_json",
-            prompt="以下是一段带标点符号的完整中文句子。",
+            prompt=prompt,
         )
         if isinstance(result, dict):
             segments = result.get("segments", [])
@@ -145,18 +148,21 @@ def build_character_dataset(
     min_silence_len: float,
     progress_callback: Callable[..., None],
     enable_llm_tagging: bool = True,
+    language: str = "zh",
 ) -> None:
     """
     Business Logic（为什么需要这个函数）:
         用户上传参考音频后，系统需要自动切分、转录、LLM 情绪打标，生成角色素材库 library.json，
         这是整个「角色素材库」核心能力的入口函数（新建角色流程）。
         enable_llm_tagging=True 时在 ASR 后额外跑 LLM 批量打标，提升情绪匹配质量。
+        language 由用户在前端"新建角色"时选择（默认 "zh"，支持 "en/ja/ko/..." 或 "auto" 自动检测），
+        写入 library.json 顶层供后续追加音频时复用。
 
     Code Logic（这个函数做什么）:
         1) 对每个上传文件独立做静音切分（split_on_silence），stage='slicing'；
-        2) 对每个有效音频段（>0.5s）调 ASR 服务转录，stage='asr'；
+        2) 对每个有效音频段（>0.5s）调 ASR 服务转录（用入参 language），stage='asr'；
         3) enable_llm_tagging=True 时调 _apply_llm_tags 批量打标，stage='tagging'；
-        4) 写入 library.json，stage='writing'；
+        4) 写入 library.json（顶层含 language 字段），stage='writing'；
         5) 全程通过 progress_callback 上报进度。
     """
     try:
@@ -204,7 +210,7 @@ def build_character_dataset(
             filepath = os.path.join(voice_lib_dir, filename)
             chunk.export(filepath, format="wav")
 
-            text = _transcribe_segment(filepath, asr_cfg)
+            text = _transcribe_segment(filepath, asr_cfg, language)
 
             if not text:
                 try:
@@ -232,8 +238,10 @@ def build_character_dataset(
 
         progress_callback(90, "📝 正在写入 library.json...", stage="writing")
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({"char_id": char_id, "char_name": char_name, "items": library_data}, f, ensure_ascii=False,
-                      indent=2)
+            json.dump(
+                {"char_id": char_id, "char_name": char_name, "language": language, "items": library_data},
+                f, ensure_ascii=False, indent=2,
+            )
 
         for p in audio_paths:
             try:
@@ -254,17 +262,21 @@ def append_character_dataset(
     min_silence_len: float,
     progress_callback: Callable[..., None],
     enable_llm_tagging: bool = True,
+    language: str | None = None,
 ) -> None:
     """
     Business Logic（为什么需要这个函数）:
         用户向已有角色补充新音频时，系统需要追加切分、转录、LLM 情绪打标、入库，
         且不覆盖已有素材（追加到 library.json 的 items 末尾）。
         enable_llm_tagging=True 时在 ASR 后额外跑 LLM 批量打标，提升情绪匹配质量。
+        language=None 时自动从 library.json 顶层读取建角色时存的语种（兜底 "zh"），
+        保证追加音频与原始素材使用同一种 ASR 语种；显式传值则覆盖。
 
     Code Logic（这个函数做什么）:
         1) 读取已有 library.json，找到当前最大 id 作为新段的起始 id；
+           language=None 时从 library.json 顶层 "language" 字段读取（兜底 "zh"）；
         2) 对新上传文件独立做静音切分，stage='slicing'；
-        3) 对每个有效段调 ASR 服务转录，stage='asr'；
+        3) 对每个有效段调 ASR 服务转录（用解析出的 language），stage='asr'；
         4) enable_llm_tagging=True 时调 _apply_llm_tags 批量打标，stage='tagging'；
         5) 写入 library.json，stage='writing'；
         6) 全程通过 progress_callback 上报进度。
@@ -280,6 +292,9 @@ def append_character_dataset(
             db_content: dict[str, Any] = json.load(f)
         existing_items: list[dict[str, Any]] = db_content.get("items", [])
         start_chunk_index = max([item.get("id", -1) for item in existing_items] + [-1]) + 1
+
+        # 语种解析：显式传入 > library.json 顶层存的 > 兜底 "zh"
+        effective_language: str = language if language is not None else str(db_content.get("language", "zh"))
 
         progress_callback(10, "🔪 正在对新上传的文件进行独立切分处理...", stage="slicing")
         silence_ms = int(min_silence_len * 1000)
@@ -318,7 +333,7 @@ def append_character_dataset(
             filepath = os.path.join(voice_lib_dir, filename)
             chunk.export(filepath, format="wav")
 
-            text = _transcribe_segment(filepath, asr_cfg)
+            text = _transcribe_segment(filepath, asr_cfg, effective_language)
 
             if not text:
                 try:
@@ -346,6 +361,8 @@ def append_character_dataset(
 
         progress_callback(90, "📝 正在写入 library.json...", stage="writing")
         db_content["items"].extend(new_library_data)
+        # 旧版 library.json 可能没有 language 顶层字段，借机回填一次（不覆盖已有值）
+        db_content.setdefault("language", effective_language)
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(db_content, f, ensure_ascii=False, indent=2)
 

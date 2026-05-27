@@ -7,7 +7,7 @@ HTTP **薄壳**层。每个 router 只做：拿请求参数 → 调 `webapp.doma
 | 文件 | 端点 |
 | --- | --- |
 | `config.py` | `/api/config` · `/api/config/verify_active` · `/api/config/validate` · `/api/config/test_llm` · `/api/config/test_tts` · `/api/config/test_asr`（后三个用请求体内的字段做连通性测试，不落盘） |
-| `characters.py` | `/api/characters*`（CRUD 列表 / 创建 / 追加 / 详情 / 改名 / 头像 / 进度 / items 编辑 / 合并 / 切分 / 导入导出 / **情绪重标 `/relabel`**）。创建和追加端点新增 `enable_llm_tagging: bool = Form(True)` 控制是否在 ASR 后跑 LLM 打标。`POST /relabel` 接受可选 body `{"item_ids": [...] | null}`，后台异步运行，进度通过 `/api/progress/{char_id}_relabel` 查询。|
+| `characters.py` | `/api/characters*`（CRUD 列表 / 创建 / 追加 / 详情 / 改名 / 头像 / 进度 / items 编辑 / 合并 / 切分 / 导入导出 / **情绪重标 `/relabel`**）。创建和追加端点：`enable_llm_tagging: bool = Form(True)` 控制是否在 ASR 后跑 LLM 打标；`language: str = Form("zh")`（创建）/ `language: Optional[str] = Form(None)`（追加，None 时沿用 library.json 顶层语种）控制 ASR 转写语种。`POST /relabel` 接受可选 body `{"item_ids": [...] | null}`，后台异步运行，进度通过 `/api/progress/{char_id}_relabel` 查询。|
 | `emotion.py` | `/api/analyze_emotion` · `/api/match` · `/api/split_text` |
 | `synthesis.py` | `/api/synthesize` · `/api/outputs/merge` |
 | `openai_compat.py` | `/v1/audio/speech`（OpenAI 兼容 TTS，voice 字段接受角色名或 char_id）· `/v1/voices`（GET，列出可用角色，OpenAI list 协议 `{"object":"list","data":[...]}`，复用 `domain.characters.list_all`） |

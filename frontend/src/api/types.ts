@@ -11,6 +11,25 @@ export type EmotionPrimary = '喜' | '怒' | '哀' | '惧' | '厌' | '低落' | 
 export type EmotionIntensity = 'Low' | 'Medium' | 'High';
 export type LlmProvider = 'ollama' | 'siliconflow' | 'youzhi' | 'deepseek' | 'custom';
 
+/**
+ * 参考音转写语种代码（Whisper / faster-whisper 兼容）。
+ * 'auto' = 让模型自动检测（云端 OpenAI Whisper 也支持，传空字符串 / "auto" 触发）。
+ * 其余为常见 ISO 639-1 代码。
+ */
+export type AsrLanguage = 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es';
+
+/** UI 用：语种 → 中文显示名 */
+export const ASR_LANGUAGE_OPTIONS: { value: AsrLanguage; label: string }[] = [
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: '英文' },
+  { value: 'ja', label: '日文' },
+  { value: 'ko', label: '韩文' },
+  { value: 'fr', label: '法文' },
+  { value: 'de', label: '德文' },
+  { value: 'es', label: '西班牙文' },
+  { value: 'auto', label: '自动检测' },
+];
+
 /** 8 维情绪向量：[喜, 怒, 哀, 惧, 厌, 低落, 惊, 平] */
 export type EmotionVector = readonly [number, number, number, number, number, number, number, number];
 

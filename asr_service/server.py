@@ -13,7 +13,6 @@
     ASR_PORT            监听端口（默认 9900）
 """
 import os
-import tempfile
 import uuid
 from threading import Lock
 from typing import Annotated, Literal, Optional
@@ -140,6 +139,9 @@ async def transcribe(
     temperature: Annotated[float, Form()] = 0.0,
     prompt: Annotated[Optional[str], Form()] = None,
 ):
+    # language 归一化：空字符串 / "auto" / "none" → None，触发 faster-whisper 自动检测语种
+    lang_norm: Optional[str] = language.strip().lower() if isinstance(language, str) else None
+    whisper_language: Optional[str] = None if lang_norm in (None, "", "auto", "none") else lang_norm
     """
     Business Logic（为什么需要这个函数）:
         Web 中枢需要将每段切分好的 WAV 文件转录为文本；
@@ -153,6 +155,7 @@ async def transcribe(
         4) 清理临时文件；temperature 参数接收但忽略（faster-whisper 不暴露该参数）。
     """
     _ = model  # 本地只有一个模型，忽略此字段
+    _ = temperature  # faster-whisper 不暴露该参数，接收但忽略以兼容 OpenAI 协议
 
     try:
         whisper = _get_model()
@@ -167,10 +170,10 @@ async def transcribe(
         with open(tmp_path, "wb") as f_tmp:
             f_tmp.write(content)
 
-        # 调用 faster-whisper 推理
+        # 调用 faster-whisper 推理（language=None 让模型自动检测语种）
         segments_gen, info = whisper.transcribe(
             tmp_path,
-            language=language,
+            language=whisper_language,
             initial_prompt=prompt,
             vad_filter=True,
             beam_size=5,

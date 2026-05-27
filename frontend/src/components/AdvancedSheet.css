@@ -50,22 +50,115 @@
   flex-shrink: 0;
 }
 
+/* ── 顶部信号流示意 ───────────────────────────────────────── */
+.adv-flow-card {
+  margin-bottom: 22px; padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.adv-flow-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.adv-flow-row:last-of-type { margin-bottom: 0; }
+
+.adv-flow-chip {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+.adv-flow-chip--upstream {
+  background: color-mix(in oklch, var(--signal-warn) 12%, transparent);
+  color: var(--signal-warn);
+  border-color: color-mix(in oklch, var(--signal-warn) 30%, transparent);
+}
+
+.adv-flow-arrow {
+  font-size: 11px; color: var(--ink-3);
+  padding: 0 6px;
+  position: relative;
+}
+.adv-flow-arrow::before {
+  content: '→'; margin-right: 4px; color: var(--ink-3);
+}
+
+.adv-flow-mid {
+  font-size: 12px; color: var(--ink-2);
+  padding: 3px 10px; border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--accent) 40%, transparent);
+  font-weight: 500;
+}
+
+.adv-flow-op {
+  font-size: 13px; color: var(--ink-3);
+  font-weight: 600; padding: 0 2px;
+}
+
+.adv-flow-foot {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 11px; color: var(--ink-3); line-height: 1.55;
+}
+
+/* ── 阶段分隔标签（① 上游 / ② 下游） ─────────────────────── */
+.adv-stage {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.adv-stage-num {
+  font-size: 13px; font-weight: 600;
+  width: 20px; height: 20px; line-height: 20px;
+  text-align: center; border-radius: 6px;
+  background: var(--surface-2); color: var(--ink-2);
+}
+.adv-stage--upstream .adv-stage-num {
+  background: color-mix(in oklch, var(--signal-warn) 14%, transparent);
+  color: var(--signal-warn);
+}
+.adv-stage--signal .adv-stage-num {
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.adv-stage-label {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.adv-stage-desc {
+  font-size: 11px; color: var(--ink-3);
+  margin-left: auto;
+}
+
 /* ── Section layout ──────────────────────────────────────── */
-.adv-section { margin-bottom: 24px; }
-.adv-section:last-child { margin-bottom: 0; }
+.adv-section { margin-bottom: 20px; }
 
 .adv-section-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px; gap: 8px;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 10px; gap: 8px;
 }
+
+.adv-section-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .adv-section-head h4 {
   margin: 0;
   font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
-.adv-badges { display: flex; align-items: center; gap: 6px; }
+.adv-section-role {
+  font-size: 11px; color: var(--ink-3); line-height: 1.4;
+}
+
+.adv-field-note {
+  font-size: 11px; color: var(--ink-3);
+  margin-top: 8px; line-height: 1.5;
+}
+
+.adv-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* ── 徽章 ──────────────────────────────────────────────────── */
 .adv-badge {
@@ -99,6 +192,9 @@
   background: var(--surface-2);
   border-radius: 8px; padding: 8px 12px;
   margin-bottom: 10px;
+}
+.adv-placeholder-sub {
+  margin-left: 8px; font-size: 11px; opacity: 0.6;
 }
 
 /* ── 参考音 section ────────────────────────────────────────── */
@@ -238,10 +334,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .adv-alpha-val.val--auto { color: var(--ink-3); }
-
-.adv-alpha-hint {
-  font-size: 12px; color: var(--ink-3); margin-top: 8px;
-}
 
 /* ── 按钮 ───────────────────────────────────────────────────── */
 .btn-soft {

@@ -250,20 +250,20 @@ export async function getCharacterDetails(charId: string): Promise<CharacterDeta
 }
 
 /**
- * POST /api/characters — 新建角色（multipart: char_name, files[], avatar?, min_silence_len?, enable_llm_tagging?）
+ * POST /api/characters — 新建角色（multipart: char_name, files[], avatar?, min_silence_len?, enable_llm_tagging?, language?）
  * 后端返回 {status, char_id}，建角色是后台任务，用 char_id 轮询 /api/progress/{char_id}
  *
  * Business Logic:
- *   新建角色时用户可选是否启用 LLM 情绪打标。默认开启，可在 BuildCharacterView 中关闭以加快处理速度。
+ *   新建角色时用户可选是否启用 LLM 情绪打标，以及参考音转写的语种（默认 zh，IndexTTS2 本身多语言）。
  *
  * Code Logic:
- *   将 enableLlmTagging 布尔值转为字符串 "true"/"false" 追加到 FormData，
- *   后端 Form(True) 接收该字段。
+ *   将 enableLlmTagging 布尔值转为 "true"/"false" 追加到 FormData；
+ *   language 字段当用户传入时附加（缺省让后端用 "zh"）。
  */
 export async function createCharacter(
   charName: string,
   audioFiles: File[],
-  options?: { avatar?: File; minSilenceLen?: number; enableLlmTagging?: boolean },
+  options?: { avatar?: File; minSilenceLen?: number; enableLlmTagging?: boolean; language?: string },
 ): Promise<CharCreateResponse> {
   const form = new FormData();
   form.append('char_name', charName);
@@ -275,6 +275,9 @@ export async function createCharacter(
   }
   // enable_llm_tagging 默认 true，只有明确 false 时才关闭
   form.append('enable_llm_tagging', options?.enableLlmTagging === false ? 'false' : 'true');
+  if (options?.language) {
+    form.append('language', options.language);
+  }
   for (const f of audioFiles) {
     form.append('files', f);
   }
@@ -286,20 +289,25 @@ export async function createCharacter(
  *
  * Business Logic:
  *   追加音频时也支持可选的 LLM 情绪打标，用户可在 append sheet 中控制。
+ *   language 缺省时后端会从 library.json 顶层读取建角色时的语种，保证一致；
+ *   仅当用户想覆盖时才传值。
  *
  * Code Logic:
- *   将 enableLlmTagging 转为 form field enable_llm_tagging，与 createCharacter 保持一致。
+ *   将 enableLlmTagging 转为 form field enable_llm_tagging；language 可选，缺省不附加。
  */
 export async function appendToCharacter(
   charId: string,
   audioFiles: File[],
-  options?: { minSilenceLen?: number; enableLlmTagging?: boolean },
+  options?: { minSilenceLen?: number; enableLlmTagging?: boolean; language?: string },
 ): Promise<StatusResponse> {
   const form = new FormData();
   if (options?.minSilenceLen !== undefined) {
     form.append('min_silence_len', String(options.minSilenceLen));
   }
   form.append('enable_llm_tagging', options?.enableLlmTagging === false ? 'false' : 'true');
+  if (options?.language) {
+    form.append('language', options.language);
+  }
   for (const f of audioFiles) {
     form.append('files', f);
   }

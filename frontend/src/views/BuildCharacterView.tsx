@@ -16,7 +16,8 @@ import './BuildCharacterView.css'
 import Icon from '../icons/Icon'
 import { useBuildCharacter } from '@/hooks/useBuildCharacter'
 import { getCharacterDetails } from '@/api/client'
-import type { EmotionPrimary } from '@/api/types'
+import { ASR_LANGUAGE_OPTIONS } from '@/api/types'
+import type { AsrLanguage, EmotionPrimary } from '@/api/types'
 
 // ============================================================
 // 阶段类型定义
@@ -119,6 +120,7 @@ export default function BuildCharacterView({ onBack }: BuildCharacterViewProps) 
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [enableLlmTagging, setEnableLlmTagging] = useState<boolean>(true)
+  const [language, setLanguage] = useState<AsrLanguage>('zh')
 
   // ---- 完成总览状态 ----
   const [emotionDist, setEmotionDist] = useState<Map<EmotionPrimary, number>>(new Map())
@@ -210,11 +212,12 @@ export default function BuildCharacterView({ onBack }: BuildCharacterViewProps) 
         avatar: avatarFile ?? undefined,
         minSilenceLen: silenceLen,
         enableLlmTagging,
+        language,
       })
     } catch {
       // 错误已在 state 中展示
     }
-  }, [audioFiles, charName, avatarFile, silenceLen, enableLlmTagging, isRunning, build])
+  }, [audioFiles, charName, avatarFile, silenceLen, enableLlmTagging, language, isRunning, build])
 
   // ---- 重试 ----
   const handleRetry = useCallback(() => {
@@ -235,6 +238,7 @@ export default function BuildCharacterView({ onBack }: BuildCharacterViewProps) 
     setAvatarFile(null)
     setAvatarPreview(null)
     setEnableLlmTagging(true)
+    setLanguage('zh')
     setEmotionDist(new Map())
     setNewCharId(null)
   }, [reset])
@@ -369,6 +373,22 @@ export default function BuildCharacterView({ onBack }: BuildCharacterViewProps) 
                 onChange={(e) => setSilenceLen(parseFloat(e.target.value))}
                 disabled={isRunning || isDone}
               />
+            </div>
+            <div className="bcv-field bcv-field--narrow">
+              <label className="bcv-label">
+                转写语种
+                <span className="bcv-label-hint">（参考音的语言）</span>
+              </label>
+              <select
+                className="bcv-input bcv-input--select"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as AsrLanguage)}
+                disabled={isRunning || isDone}
+              >
+                {ASR_LANGUAGE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
             <div className="bcv-field bcv-field--toggle">
               <label className="bcv-label">AI 情绪打标</label>

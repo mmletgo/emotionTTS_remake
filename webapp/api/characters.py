@@ -83,9 +83,14 @@ async def create_character(
     char_name: str = Form(...),
     min_silence_len: float = Form(0.8),
     enable_llm_tagging: bool = Form(True),
+    language: str = Form("zh"),
     avatar: Optional[UploadFile] = File(None),
     files: List[UploadFile] = File(...),
 ) -> dict:
+    """
+    Form 字段 `language`：ASR 转写语种（默认 "zh"，可选 "en/ja/ko/fr/de/es/..." 或 "auto" 自动检测）。
+    会被写入 library.json 顶层，供后续 append/relabel 沿用。
+    """
     avatar_filename = avatar.filename if avatar else None
     avatar_obj = avatar.file if avatar else None
     char_id, audio_paths = char_repo.stage_uploads_for_create(avatar_filename, avatar_obj, files)
@@ -95,7 +100,7 @@ async def create_character(
     background_tasks.add_task(
         build_character_dataset,
         char_id, char_name, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater,
-        enable_llm_tagging,
+        enable_llm_tagging, language,
     )
     return {"status": "success", "char_id": char_id}
 
@@ -106,8 +111,13 @@ async def append_to_character(
     background_tasks: BackgroundTasks,
     min_silence_len: float = Form(0.8),
     enable_llm_tagging: bool = Form(True),
+    language: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
 ) -> dict:
+    """
+    Form 字段 `language`：可选，缺省时沿用 library.json 顶层存的语种（建角色时记录）；
+    显式传入则覆盖。
+    """
     try:
         audio_paths = char_repo.stage_uploads_for_append(char_id, files)
     except char_repo.CharacterNotFound:
@@ -119,7 +129,7 @@ async def append_to_character(
     background_tasks.add_task(
         append_character_dataset,
         char_id, audio_paths, char_repo.CHARACTERS_DIR, min_silence_len, updater,
-        enable_llm_tagging,
+        enable_llm_tagging, language,
     )
     return {"status": "success"}
 

@@ -14,6 +14,8 @@ interface BuildInput {
   minSilenceLen?: number;
   /** 是否启用 LLM 情绪打标，默认 true（向后兼容） */
   enableLlmTagging?: boolean;
+  /** 参考音转写语种代码（zh / en / ja / ko / fr / de / es / auto），缺省后端用 "zh" */
+  language?: string;
 }
 
 interface BuildState {
@@ -58,6 +60,7 @@ export function useBuildCharacter(): UseBuildCharacterResult {
         avatar: input.avatar,
         minSilenceLen: input.minSilenceLen,
         enableLlmTagging: input.enableLlmTagging,
+        language: input.language,
       });
       charId = res.char_id;
       setState((prev) => ({ ...prev, charId, msg: '正在处理...' }));
