@@ -1,0 +1,168 @@
+/* SettingsView — Apple 风格分组设置 */
+
+.settings-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 22px;
+  animation: fade-in .3s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.settings-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin-bottom: 22px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  animation: fade-in .3s ease both;
+}
+
+.settings-group:nth-child(2) { animation-delay: .04s; }
+.settings-group:nth-child(3) { animation-delay: .08s; }
+.settings-group:nth-child(4) { animation-delay: .12s; }
+
+.settings-group-head {
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+}
+
+.settings-group-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: white;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+.settings-group-icon svg { color: white; }
+.settings-group-icon.llm {
+  background: linear-gradient(135deg, oklch(62% 0.16 250), oklch(48% 0.12 250));
+}
+.settings-group-icon.tts {
+  background: linear-gradient(135deg, oklch(64% 0.16 30), oklch(48% 0.12 30));
+}
+.settings-group-icon.gen {
+  background: linear-gradient(135deg, oklch(60% 0.12 200), oklch(46% 0.10 200));
+}
+
+.settings-group-title { font-size: 15px; font-weight: 600; }
+.settings-group-subtitle { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  min-height: 56px;
+}
+.settings-row:last-child { border-bottom: none; }
+
+.settings-label { font-size: 14px; font-weight: 500; color: var(--ink); }
+.settings-label small {
+  display: block; color: var(--ink-3); font-weight: 400; font-size: 12px; margin-top: 2px;
+}
+
+.settings-value { color: var(--ink-2); font-size: 14px; }
+
+.settings-input,
+.settings-select {
+  width: 100%; max-width: 320px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color .15s, background .15s;
+  color: var(--ink);
+}
+.settings-input:focus,
+.settings-select:focus {
+  outline: none; background: var(--surface);
+  border-color: var(--accent);
+}
+.settings-select { appearance: none; cursor: pointer; }
+
+.settings-value.mono {
+  font-family: var(--font-mono); font-size: 13px;
+}
+
+/* Toggle */
+.toggle {
+  position: relative;
+  width: 44px; height: 26px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background .2s;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: block;
+}
+.toggle::after {
+  content: "";
+  position: absolute; top: 2px; left: 2px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,.2);
+  transition: transform .2s cubic-bezier(.32,.72,0,1);
+}
+.toggle[aria-checked="true"] { background: var(--signal-ok); }
+.toggle[aria-checked="true"]::after { transform: translateX(18px); }
+
+/* Test button */
+.btn-test {
+  padding: 7px 14px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.btn-test:hover { background: var(--hover); color: var(--ink); }
+.btn-test.is-ok {
+  background: color-mix(in oklch, var(--signal-ok) 14%, transparent);
+  color: var(--signal-ok);
+}
+.btn-test.is-ok::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--signal-ok);
+  display: inline-block; flex-shrink: 0;
+}
+.btn-test.is-err {
+  background: color-mix(in oklch, var(--signal-err) 14%, transparent);
+  color: var(--signal-err);
+}
+
+/* Swatch row */
+.swatch-row { display: flex; gap: 8px; }
+.swatch-row .sw {
+  width: 26px; height: 26px; border-radius: 8px;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform .15s, border-color .15s;
+}
+.swatch-row .sw[aria-pressed="true"] { border-color: var(--ink); transform: scale(1.08); }
+
+/* Segmented control */
+.seg-ctl-settings {
+  display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 9px;
+}
+.seg-ctl-settings button {
+  padding: 6px 14px; border-radius: 7px;
+  font-size: 13px; color: var(--ink-2); font-weight: 500;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.seg-ctl-settings button[aria-pressed="true"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 720px) {
+  .settings-row { grid-template-columns: 1fr; }
+  .settings-row > *:last-child { justify-self: start; }
+}

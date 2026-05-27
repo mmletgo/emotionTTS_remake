@@ -1,0 +1,79 @@
+/* ============================================================
+   EmotionTTS Design Tokens — Apple HIG × NetEase Music
+   Light (default) + Dark themes via [data-theme]
+   ============================================================ */
+
+:root[data-theme="light"] {
+  --bg:             oklch(98% 0.003 80);
+  --surface:        oklch(100% 0 0);
+  --surface-2:      oklch(96% 0.005 80);
+  --surface-glass:  oklch(100% 0 0 / .72);
+  --hover:          oklch(95% 0.006 80);
+
+  --line:           oklch(91% 0.005 70);
+  --line-strong:    oklch(82% 0.008 70);
+
+  --ink:            oklch(20% 0.012 60);
+  --ink-2:          oklch(42% 0.010 60);
+  --ink-3:          oklch(60% 0.008 60);
+  --ink-disabled:   oklch(78% 0.006 60);
+
+  --accent:         oklch(64% 0.20 38);
+  --accent-soft:    oklch(64% 0.20 38 / .10);
+  --accent-strong:  oklch(58% 0.22 38);
+  --accent-ink:     oklch(100% 0 0);
+
+  --signal-ok:      oklch(60% 0.16 145);
+  --signal-warn:    oklch(70% 0.16 75);
+  --signal-err:     oklch(58% 0.22 25);
+
+  --shadow-sm: 0 1px 2px rgba(15, 18, 22, .04), 0 1px 1px rgba(15, 18, 22, .03);
+  --shadow-md: 0 4px 12px -2px rgba(15, 18, 22, .06), 0 2px 4px rgba(15, 18, 22, .04);
+  --shadow-lg: 0 18px 48px -12px rgba(15, 18, 22, .12), 0 6px 16px -8px rgba(15, 18, 22, .08);
+  --shadow-glass: 0 1px 0 rgba(255,255,255,.6) inset, 0 18px 48px -16px rgba(15, 18, 22, .15);
+}
+
+:root[data-theme="dark"] {
+  --bg:             oklch(14% 0.008 50);
+  --surface:        oklch(18% 0.010 50);
+  --surface-2:      oklch(22% 0.012 50);
+  --surface-glass:  oklch(18% 0.010 50 / .72);
+  --hover:          oklch(24% 0.012 50);
+
+  --line:           oklch(28% 0.010 50);
+  --line-strong:    oklch(38% 0.012 50);
+
+  --ink:            oklch(96% 0.004 80);
+  --ink-2:          oklch(76% 0.008 70);
+  --ink-3:          oklch(58% 0.010 70);
+  --ink-disabled:   oklch(40% 0.008 70);
+
+  --accent:         oklch(72% 0.18 42);
+  --accent-soft:    oklch(72% 0.18 42 / .16);
+  --accent-strong:  oklch(78% 0.20 42);
+  --accent-ink:     oklch(15% 0.01 50);
+
+  --signal-ok:      oklch(72% 0.17 145);
+  --signal-warn:    oklch(80% 0.16 80);
+  --signal-err:     oklch(64% 0.22 25);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 8px 24px -8px rgba(0,0,0,.5);
+  --shadow-lg: 0 24px 64px -12px rgba(0,0,0,.6);
+  --shadow-glass: 0 1px 0 rgba(255,255,255,.04) inset, 0 24px 64px -16px rgba(0,0,0,.7);
+}
+
+/* Easing & timing */
+:root {
+  --ease-mech:  cubic-bezier(.32, .72, 0, 1);
+  --ease-glide: cubic-bezier(.4, 0, .2, 1);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "Menlo", monospace;
+}

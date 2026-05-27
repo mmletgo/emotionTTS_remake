@@ -1,0 +1,96 @@
+/* CastPickerSheet — 角色选择浮层 */
+.cast-picker-scrim {
+  position: fixed; inset: 0;
+  background: oklch(15% 0.01 50 / .4);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+  z-index: 100;
+}
+.cast-picker-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+
+.cast-picker-sheet {
+  position: fixed; left: 50%; top: 50%;
+  transform: translate(-50%, -45%) scale(.96);
+  width: min(640px, 94vw);
+  max-height: 80vh;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease, transform .28s cubic-bezier(.32,.72,0,1);
+  z-index: 101;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.cast-picker-sheet[data-open="true"] {
+  opacity: 1; pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.cast-picker__head {
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.cast-picker__title { font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+
+.cast-picker__search {
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cast-picker__search-inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border-radius: 12px;
+}
+.cast-picker__search-inner input {
+  flex: 1; background: none; border: none; outline: none; font-size: 14px;
+}
+
+.cast-picker__grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  padding: 20px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cast-picker__card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer;
+  transition: transform .2s cubic-bezier(.32,.72,0,1), box-shadow .2s, border-color .15s;
+}
+.cast-picker__card:hover {
+  transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--line-strong);
+}
+.cast-picker__card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.cast-picker__avatar {
+  width: 80px; height: 80px; border-radius: 20px;
+  display: grid; place-items: center;
+  font-size: 32px; font-weight: 600; color: white;
+  background: linear-gradient(135deg, oklch(62% 0.16 30), oklch(48% 0.12 30));
+  box-shadow: var(--shadow-sm);
+}
+
+.cast-picker__name { font-size: 14px; font-weight: 600; }
+.cast-picker__meta { font-size: 11px; color: var(--ink-3); font-family: var(--font-mono); }
+
+.cast-picker__foot {
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  display: flex; justify-content: flex-end; gap: 8px;
+}

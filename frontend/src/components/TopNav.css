@@ -1,0 +1,61 @@
+/* TopNav — Apple 风格半透明顶栏 */
+.topnav {
+  position: sticky; top: 0; z-index: 50;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 0 24px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+          backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+
+.topnav__brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+}
+
+.topnav__brand-dot {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  display: grid; place-items: center;
+  color: var(--accent-ink); font-size: 11px; font-weight: 700;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+
+.topnav__segments {
+  display: flex; gap: 2px;
+  padding: 3px; border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.topnav__seg {
+  padding: 6px 16px; border-radius: 7px;
+  font-size: 13px; font-weight: 500; color: var(--ink-2);
+  transition: color .18s ease, background .18s ease;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+
+.topnav__seg svg { opacity: .8; }
+.topnav__seg[aria-current="page"] svg { opacity: 1; }
+
+.topnav__seg[aria-current="page"] {
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm);
+}
+.topnav__seg:hover:not([aria-current="page"]) { color: var(--ink); }
+
+.topnav__right {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+}
+
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: grid; place-items: center; color: var(--ink-2);
+  transition: background .15s, color .15s;
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+
+@media (max-width: 720px) {
+  .topnav { padding: 0 16px; }
+  .topnav__seg { padding: 6px 10px; }
+}
