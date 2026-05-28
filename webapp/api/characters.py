@@ -239,6 +239,8 @@ async def import_character(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=400, detail="请上传 ZIP 格式的角色包")
     try:
         char_id = char_repo.import_zip(file.file)
+    except char_repo.DuplicateCharacter as e:
+        raise HTTPException(status_code=409, detail=f"该角色已存在（与「{e}」内容完全相同），已跳过导入")
     except char_repo.InvalidCharacterPackage as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success", "char_id": char_id}

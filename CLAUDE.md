@@ -104,7 +104,7 @@ emotionTTS_remake/
 7. **`emo_vector` 偷渡协议**：`clients/tts.py` 把 `voice` 字段写成 `[EMO:[v0..v7]|alpha]base64:...`；`tts_service/server.py` 入口处用正则剥离。两端必须同步。
 8. **`webapp/api/_progress.py`**：跨 router 共享的后台任务进度字典，进程重启会丢失（有意为之，详见 PRD 5.6）。
 9. **API 白名单优先**：智能匹配候选池由 `domain/matcher._select_candidate_pool` 决定，受 `api_priority` 参数控制——开启时只要存在 `is_api_safe=true` 的素材就只用这批（独占而非加权），否则用全部已打标素材；关闭则忽略该标记直接用全集。前端通过 `/api/match` 的 `api_priority` 字段（设置页"允许 API 模式优先"开关）传入；OpenAI 兼容接口 `/v1/audio/speech` 固定 False（不限制 is_api_safe，使用全集已打标素材）。合并/切分产生的新 item `is_api_safe` 始终 false（不继承）。
-10. **导入角色 ZIP 时强制刷新 char_id**：`domain.characters.import_zip` 会把新 `library.json.char_id` 强制等于新目录名；不要去掉这步，否则历史包内的不一致会污染新数据。
+10. **导入角色 ZIP 时强制刷新 char_id + 内容查重**：`domain.characters.import_zip` 先用 `_character_fingerprint`（基于 items 的 filename+text，与 char_id 无关）与现有角色比对，命中则抛 `DuplicateCharacter`（api 翻译为 409）拒绝导入，杜绝"同一角色被导入成两份、对外 `/v1/voices` 列表出现重复角色"；通过后把新 `library.json.char_id` 强制等于新目录名。这两步都不要去掉。
 11. **`tts_service/server.py` 启动时清 uploads/**：`_clear_stale_uploads()` 在 `_init_engine` 前调用，处理上次崩溃残留；不要乱改顺序。
 12. **前端为 Vite + React SPA**：`webapp/app.py` 直接 serve `webapp/frontend/index.html`（Vite 输出，asset 带 hash 无需时间戳）；`/assets/*` 挂 StaticFiles；所有非 API 路径回退到 index.html（SPA history 模式 fallback）。构建前根路由返回友好提示页而非 500。
 13. **`outputs/` 永不自动清理**：有意为之（详见 PRD 5.6），用户自管。

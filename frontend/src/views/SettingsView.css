@@ -24,6 +24,7 @@
 .settings-group:nth-child(3) { animation-delay: .08s; }
 .settings-group:nth-child(4) { animation-delay: .12s; }
 .settings-group:nth-child(5) { animation-delay: .16s; }
+.settings-group:nth-child(6) { animation-delay: .20s; }
 
 .settings-group-head {
   padding: 14px 20px 10px;
@@ -50,6 +51,9 @@
 }
 .settings-group-icon.gen {
   background: linear-gradient(135deg, oklch(60% 0.12 200), oklch(46% 0.10 200));
+}
+.settings-group-icon.api {
+  background: linear-gradient(135deg, oklch(60% 0.14 295), oklch(46% 0.12 295));
 }
 
 .settings-group-title { font-size: 15px; font-weight: 600; }
@@ -202,3 +206,118 @@
 .btn-save:hover { filter: brightness(1.05); }
 .btn-save:active { transform: translateY(1px); }
 .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ============ 对外 API 文档区 ============ */
+
+/* 复制按钮（服务地址 / 接口 / 代码块共用） */
+.api-copy {
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.api-copy:hover { background: var(--hover); color: var(--ink); }
+.api-copy.is-copied {
+  background: color-mix(in oklch, var(--signal-ok) 14%, transparent);
+  color: var(--signal-ok);
+}
+
+/* 行内 code（服务地址 / 接口路径 / 参数名） */
+.api-url, .api-path {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.api-doc { padding: 4px 20px 18px; }
+
+.api-doc-section-title {
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  margin: 18px 0 10px;
+}
+
+/* 接口条目：方法徽标 + 路径 + 描述 + 复制 */
+.api-endpoint {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+.api-method {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 6px;
+  flex-shrink: 0;
+}
+.api-method.get {
+  background: color-mix(in oklch, var(--signal-ok) 16%, transparent);
+  color: var(--signal-ok);
+}
+.api-method.post {
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  color: var(--accent-strong, var(--accent));
+}
+.api-endpoint-desc { font-size: 13px; color: var(--ink-3); flex: 1; min-width: 200px; }
+
+/* 参数列表 */
+.api-params { display: flex; flex-direction: column; gap: 8px; }
+.api-params li {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 13px; flex-wrap: wrap;
+}
+.api-params code {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--surface-2); padding: 2px 7px; border-radius: 5px;
+  color: var(--ink); flex-shrink: 0;
+}
+.api-param-req {
+  font-size: 11px; font-weight: 600;
+  color: var(--accent-strong, var(--accent));
+  flex-shrink: 0;
+}
+.api-param-desc { color: var(--ink-3); }
+
+/* 代码示例块 */
+.api-code {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.api-code-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.api-code-title { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.api-code pre {
+  margin: 0; padding: 14px;
+  overflow-x: auto;
+}
+.api-code code {
+  font-family: var(--font-mono); font-size: 12.5px;
+  line-height: 1.6; color: var(--ink);
+  white-space: pre;
+}
+
+/* 提醒条 */
+.api-note {
+  font-size: 13px; line-height: 1.6; color: var(--ink-2);
+  background: color-mix(in oklch, var(--accent) 7%, var(--surface-2));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.api-note strong { color: var(--ink); font-weight: 600; }
+.api-note code {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--surface); padding: 1px 6px; border-radius: 5px;
+}

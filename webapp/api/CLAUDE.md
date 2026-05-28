@@ -17,5 +17,5 @@ HTTP **薄壳**层。每个 router 只做：拿请求参数 → 调 `webapp.doma
 
 - **不允许** import `httpx`、不允许直接读写文件系统、不允许直接拼 LLM/TTS 协议 —— 这些是 `clients/` 或 `domain/` 的职责。
 - **不允许**在 router 函数体写业务规则（"超过 N 个就拒绝"、"白名单优先"等）——这些是 domain 层的。
-- 翻译异常的统一模式：捕获 domain 抛出的具体异常类（`CharacterNotFound`、`EmptyLibrary`、`ReferenceAudioMissing` 等）→ 对应的 HTTPException（404 / 400 / 500）。
+- 翻译异常的统一模式：捕获 domain 抛出的具体异常类（`CharacterNotFound`、`EmptyLibrary`、`ReferenceAudioMissing`、`DuplicateCharacter`、`AmbiguousCharacter` 等）→ 对应的 HTTPException（404 / 400 / 409 / 500）。导入端点 `/api/characters/import` 对 `DuplicateCharacter` 返回 409（同一角色重复导入被拒）；`/api/match` 与 `/v1/audio/speech` 对 `matcher.AmbiguousCharacter` 返回 409（角色名寻址命中多个，需更精确名字或目录 ID）。
 - `_progress.py` 提供 `make_updater(task_id)` 工厂，把"如何写进度字典"注入给 domain 后台任务，避免 domain 反向依赖 api。

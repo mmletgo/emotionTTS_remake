@@ -7,7 +7,11 @@ from typing import Any, Optional
 
 from webapp.clients import llm as llm_client
 from webapp.domain import characters as char_repo
+from webapp.domain.characters import AmbiguousCharacter
 from webapp.prompts.system_prompts import get_api_advanced_match_prompt
+
+# 重新导出，使 api 层可统一经 matcher.* 捕获寻址相关异常
+__all__ = ["match_for_text", "CharacterNotFound", "EmptyLibrary", "AmbiguousCharacter"]
 
 
 class CharacterNotFound(Exception):

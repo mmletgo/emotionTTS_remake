@@ -216,6 +216,10 @@ const SPRITE_SVG = `
       <path d="M20 4l-9 9"/>
       <path d="M19 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>
     </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="11" height="11" rx="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </symbol>
   </defs>
 </svg>
 `
@@ -241,7 +245,7 @@ export type IconName =
   | 'scissors' | 'sequential-play' | 'stop' | 'edit' | 'regenerate'
   | 'trash' | 'merge' | 'library' | 'check' | 'cancel'
   | 'star' | 'star-filled' | 'image' | 'save' | 'chev-left' | 'eraser'
-  | 'transcribe' | 'palette' | 'sun' | 'moon' | 'monitor' | 'external'
+  | 'transcribe' | 'palette' | 'sun' | 'moon' | 'monitor' | 'external' | 'copy'
 
 interface IconProps {
   name: IconName

@@ -24,7 +24,7 @@ src/
 ├── views/
 │   ├── StudioView       # 工作台（单句 + 长文本）
 │   ├── LibraryView      # 素材库列表 + 角色详情；新建角色委托 App 打开 BuildCharacterView
-│   ├── SettingsView     # 设置
+│   ├── SettingsView     # 设置（LLM/ASR/TTS/通用 + 只读「对外语音服务 API」文档组：服务地址/接口/参数/示例 + CopyButton 乐观复制）
 │   └── BuildCharacterView  # 独立全屏新建角色视图（四阶段进度 + 完成总览）
 ├── components/          # 共享 UI：TopNav / ThemeQuickSwitch / BottomPlayer / Sheet 系
 │                        #   ThemeQuickSwitch = TopNav 右上角的"颜色主题快捷开关"popover
@@ -94,4 +94,4 @@ src/
 - 工作台单句：选角色 → 输文本 → 合成 → 候选切换 → 重新生成 → 高级模式
 - 工作台长文本：拆分 → 批量匹配 → 全部合成 → 停止合成 → 单段操作 → 合并/ZIP 导出
 - 素材库：新建角色 → 详情编辑情绪 → 保存 → 合并 → AI 分析 → 切割 → 导出 ZIP
-- 设置：主题/强调色/通用选项
+- 设置：主题/强调色/通用选项；「对外语音服务 API」文档组（服务地址取 window.location.origin，复制按钮）

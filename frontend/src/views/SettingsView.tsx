@@ -56,6 +56,74 @@ function SegCtlSettings<T extends string>({
   )
 }
 
+/**
+ * Business Logic（为什么需要这个函数）:
+ *   API 文档区里有服务地址、curl/Python 示例等需要原样复制的字符串，
+ *   用户手动选中容易漏字符；提供一键复制能显著降低对接外部接口的门槛。
+ *
+ * Code Logic（这个函数做什么）:
+ *   受控按钮，点击后立即切换为"已复制"状态（1.6s 后复位）并尽力把 text 写入剪贴板：
+ *   优先 navigator.clipboard，失败则回退到 textarea + execCommand，用 check / copy
+ *   两个图标表达状态。乐观更新保证按钮反馈不受 writeText 挂起影响。
+ */
+function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(() => {
+    // 乐观更新：先给反馈再写剪贴板，避免 writeText 在未聚焦标签页里挂起导致按钮无反应
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+    const fallback = () => {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        document.execCommand('copy')
+      } catch {
+        /* 极端环境下无可用复制能力，静默放弃 */
+      }
+      document.body.removeChild(ta)
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(fallback)
+    } else {
+      fallback()
+    }
+  }, [text])
+  return (
+    <button
+      type="button"
+      className={`api-copy${copied ? ' is-copied' : ''}`}
+      onClick={handleCopy}
+    >
+      <Icon name={copied ? 'check' : 'copy'} size={13} />
+      {copied ? '已复制' : label}
+    </button>
+  )
+}
+
+/**
+ * Business Logic（为什么需要这个函数）:
+ *   外部对接方需要可直接粘贴运行的调用示例，代码块要带语言标题和复制按钮，
+ *   比纯文本说明更易上手。
+ *
+ * Code Logic（这个函数做什么）:
+ *   渲染一个带标题栏（标题 + CopyButton）的 <pre><code> 代码块，code 原样展示。
+ */
+function CodeBlock({ title, code }: { title: string; code: string }) {
+  return (
+    <div className="api-code">
+      <div className="api-code-head">
+        <span className="api-code-title">{title}</span>
+        <CopyButton text={code} />
+      </div>
+      <pre><code>{code}</code></pre>
+    </div>
+  )
+}
+
 export default function SettingsView() {
   const { config, saving, save, testLlm, testTts, testAsr } = useConfig()
   const { settings: uiSettings, update: updateUi } = useUiSettings()
@@ -196,6 +264,34 @@ export default function SettingsView() {
 
   // Determine active accent swatch value (may be full oklch() string or bare params)
   const activeAccentValue = ACCENT_SWATCHES.find((sw) => sw.value === accent)?.value ?? null
+
+  // 对外 API 的服务地址取当前页面 origin（用户从哪个地址访问，外部就用哪个），
+  // 缺省回落到默认 webapp 端口 9880。
+  const apiOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:9880'
+  const speechUrl = `${apiOrigin}/v1/audio/speech`
+  const voicesUrl = `${apiOrigin}/v1/voices`
+  const curlExample = `curl ${speechUrl} \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "emotionTTS",
+    "input": "今天天气真好，我们出去走走吧。",
+    "voice": "胡桃",
+    "response_format": "wav",
+    "speed": 1.0
+  }' \\
+  --output output.wav`
+  const pythonExample = `from openai import OpenAI
+
+# api_key 本地服务不校验，但 SDK 要求非空，随便填即可
+client = OpenAI(base_url="${apiOrigin}/v1", api_key="emotion-tts")
+
+with client.audio.speech.with_streaming_response.create(
+    model="emotionTTS",
+    voice="胡桃",            # 角色名或角色目录 ID
+    input="今天天气真好，我们出去走走吧。",
+    response_format="wav",
+) as response:
+    response.stream_to_file("output.wav")`
 
   return (
     <div>
@@ -438,6 +534,85 @@ export default function SettingsView() {
             >
               {ttsTesting ? '检测中…' : ttsStatus === 'ok' ? '服务在线' : '检测'}
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 对外 API group */}
+      <div className="settings-group">
+        <div className="settings-group-head">
+          <div className="settings-group-icon api">
+            <Icon name="external" size={16} />
+          </div>
+          <div>
+            <div className="settings-group-title">对外语音服务 API</div>
+            <div className="settings-group-subtitle">本项目兼容 OpenAI 语音接口，第三方客户端 / SDK 可直接调用</div>
+          </div>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">
+            服务地址
+            <small>OpenAI 客户端的 base_url（去掉末尾 /v1 即为根地址）</small>
+          </div>
+          <div className="settings-value">
+            <code className="api-url">{apiOrigin}/v1</code>
+          </div>
+          <div>
+            <CopyButton text={`${apiOrigin}/v1`} />
+          </div>
+        </div>
+
+        <div className="api-doc">
+          <div className="api-doc-section-title">接口列表</div>
+          <div className="api-endpoint">
+            <span className="api-method post">POST</span>
+            <code className="api-path">/v1/audio/speech</code>
+            <span className="api-endpoint-desc">文本转语音：输入台词与角色，返回带情感的音频</span>
+            <CopyButton text={speechUrl} label="复制地址" />
+          </div>
+          <div className="api-endpoint">
+            <span className="api-method get">GET</span>
+            <code className="api-path">/v1/voices</code>
+            <span className="api-endpoint-desc">列出全部可用角色（含 id / 名称 / 试听地址）</span>
+            <CopyButton text={voicesUrl} label="复制地址" />
+          </div>
+
+          <div className="api-doc-section-title">/v1/audio/speech 请求参数</div>
+          <ul className="api-params">
+            <li>
+              <code>input</code><span className="api-param-req">必填</span>
+              <span className="api-param-desc">要合成的文本；括号内的动作 / 表情提示会被自动剔除</span>
+            </li>
+            <li>
+              <code>voice</code><span className="api-param-req">必填</span>
+              <span className="api-param-desc">角色名（如「胡桃」）或角色目录 ID，可从 /v1/voices 获取</span>
+            </li>
+            <li>
+              <code>model</code>
+              <span className="api-param-desc">占位字段，固定填 <code>emotionTTS</code> 即可</span>
+            </li>
+            <li>
+              <code>response_format</code>
+              <span className="api-param-desc">wav / mp3 / opus / aac / flac / pcm，默认 wav（24kHz）</span>
+            </li>
+            <li>
+              <code>speed</code>
+              <span className="api-param-desc">0.25 ~ 4.0，保持音高变速，默认 1.0</span>
+            </li>
+          </ul>
+
+          <div className="api-doc-section-title">调用示例</div>
+          <CodeBlock title="cURL" code={curlExample} />
+          <CodeBlock title="Python（OpenAI SDK）" code={pythonExample} />
+          <CodeBlock title="列出可用角色" code={`curl ${voicesUrl}`} />
+
+          <div className="api-note">
+            <strong>串行调用：</strong>TTS 推理服务一次只能处理一个请求，请勿并发调用
+            <code>/v1/audio/speech</code>，必须等上一条返回后再发下一条，否则会报错或排队超时。
+          </div>
+          <div className="api-note">
+            <strong>情感自动诊断：</strong>无需手动传情绪参数，系统会按文本与角色素材自动挑选最贴合的参考音并生成情绪向量。
           </div>
         </div>
       </div>

@@ -72,6 +72,8 @@ async def openai_tts(req: OpenAITTSRequest):
         match_result = await matcher.match_for_text(req.voice, clean_text, llm_cfg, api_priority=False)
     except matcher.CharacterNotFound:
         raise HTTPException(status_code=404, detail=f"角色【{req.voice}】不存在")
+    except matcher.AmbiguousCharacter as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except matcher.EmptyLibrary:
         raise HTTPException(status_code=400, detail="角色素材库为空或未打标")
 

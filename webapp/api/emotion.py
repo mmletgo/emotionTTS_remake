@@ -43,6 +43,8 @@ async def match(req: MatchRequest) -> dict:
         )
     except matcher.CharacterNotFound:
         raise HTTPException(status_code=404, detail=f"角色【{req.char_id}】不存在")
+    except matcher.AmbiguousCharacter as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except matcher.EmptyLibrary:
         raise HTTPException(status_code=400, detail="角色素材库为空或未打标")
     except Exception as e:

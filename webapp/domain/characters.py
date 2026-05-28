@@ -5,6 +5,7 @@
 - 仅与文件系统、library.json、子进程的 zip 打包打交道
 - 不依赖 FastAPI；调用方负责把异常翻译成 HTTP 状态码
 """
+import hashlib
 import json
 import os
 import shutil
@@ -25,6 +26,23 @@ class CharacterNotFound(Exception):
 
 class InvalidCharacterPackage(Exception):
     """导入的 zip 不是合法的角色包。"""
+
+
+class DuplicateCharacter(Exception):
+    """导入的角色与库中已有角色内容完全相同（同一角色被重复导入）。"""
+
+
+class AmbiguousCharacter(Exception):
+    """
+    按角色名寻址时匹配到多个角色，无法确定唯一目标（如重名、或一个名字是另一个的子串）。
+
+    携带 query（用户输入）与 matches（命中的角色名列表），供 api 层组织 409 提示。
+    """
+
+    def __init__(self, query: str, matches: list[str]) -> None:
+        self.query = query
+        self.matches = matches
+        super().__init__(f"角色名【{query}】匹配到多个角色：{', '.join(matches)}，请用更精确的名字或目录 ID")
 
 
 def list_all() -> list[dict[str, Any]]:
@@ -235,15 +253,37 @@ def export_zip(char_id: str) -> tuple[str, str, str]:
     return zip_path, temp_dir, char_name
 
 
+def _character_fingerprint(db: dict[str, Any]) -> Optional[str]:
+    """
+    Business Logic（为什么需要这个函数）:
+        同一个角色包被导入多次会在 characters/ 下生成多个内容完全相同、仅 char_id 不同
+        的目录，导致对外角色列表里出现"两个纳西妲"。需要一个与 char_id 无关、随内容稳定
+        的指纹来识别"同一角色"，从而在导入时查重。
+
+    Code Logic（这个函数做什么）:
+        基于 items 的 (filename, text) 多重集合算 SHA-256。filename 在导出/导入间保持不变
+        （voice_lib 文件名不随导入重命名），故同一角色重复导入指纹必然相同；不同角色即便重名
+        指纹也不同。items 为空（半成品）时返回 None 表示不参与查重，避免空库误判。
+    """
+    items = db.get("items", [])
+    if not items:
+        return None
+    sig = sorted((str(it.get("filename", "")), str(it.get("text", ""))) for it in items)
+    raw = json.dumps(sig, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def import_zip(zip_file_obj) -> str:
     """
     Business Logic（为什么需要这个函数）:
         用户拿到别人导出的角色包 ZIP 后能一键导入到自己的角色库；导入后必须保证
-        目录名与 library.json 内的 char_id 字段一致，避免历史数据不一致问题。
+        目录名与 library.json 内的 char_id 字段一致，避免历史数据不一致问题；同时拒绝
+        同一角色被重复导入（内容指纹相同），避免对外角色列表出现重复条目。
 
     Code Logic（这个函数做什么）:
-        把上传的 zip 解到临时目录 → 找到含 library.json 的子目录 → 复制到 characters/
-        下新生成的 char_id 目录中 → 把新 library.json 内的 char_id 字段刷成新目录名。
+        把上传的 zip 解到临时目录 → 找到含 library.json 的子目录 → 用内容指纹与现有角色查重，
+        命中则抛 DuplicateCharacter → 复制到 characters/ 下新生成的 char_id 目录中 →
+        把新 library.json 内的 char_id 字段刷成新目录名。
     """
     temp_dir = tempfile.mkdtemp()
     zip_path = os.path.join(temp_dir, "upload.zip")
@@ -269,6 +309,30 @@ def import_zip(zip_file_obj) -> str:
         shutil.rmtree(temp_dir)
         raise InvalidCharacterPackage("ZIP 中不存在 library.json，非标准角色包")
 
+    try:
+        with open(os.path.join(target_dir, "library.json"), "r", encoding="utf-8") as f:
+            incoming_db = json.load(f)
+    except Exception:
+        shutil.rmtree(temp_dir)
+        raise InvalidCharacterPackage("library.json 解析失败，非标准角色包")
+
+    # 内容查重：与库中已有角色比对指纹，命中即拒绝（防止同一角色被导入成多份）
+    incoming_fp = _character_fingerprint(incoming_db)
+    if incoming_fp is not None:
+        for d in os.listdir(CHARACTERS_DIR):
+            existing_json = os.path.join(CHARACTERS_DIR, d, "library.json")
+            if not os.path.exists(existing_json):
+                continue
+            try:
+                with open(existing_json, "r", encoding="utf-8") as f:
+                    existing_db = json.load(f)
+            except Exception:
+                continue
+            if _character_fingerprint(existing_db) == incoming_fp:
+                shutil.rmtree(temp_dir)
+                existing_name = str(existing_db.get("char_name", d))
+                raise DuplicateCharacter(existing_name)
+
     char_id = "char_" + uuid.uuid4().hex[:8]
     final_dir = os.path.join(CHARACTERS_DIR, char_id)
     shutil.copytree(target_dir, final_dir)
@@ -277,12 +341,10 @@ def import_zip(zip_file_obj) -> str:
     # 强制目录名 == library.json.char_id，消除历史包内的不一致
     json_path = os.path.join(final_dir, "library.json")
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            db = json.load(f)
-        if db.get("char_id") != char_id:
-            db["char_id"] = char_id
+        if incoming_db.get("char_id") != char_id:
+            incoming_db["char_id"] = char_id
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(db, f, ensure_ascii=False, indent=2)
+                json.dump(incoming_db, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"⚠️ 导入后刷新 library.json.char_id 失败（已落盘但内部字段未对齐）: {e}")
 
@@ -296,15 +358,22 @@ def find_character_by_name_or_id(voice_str: str) -> Optional[tuple[str, str, dic
         合成走目录名，外部调用走角色名，需要统一容错。
 
     Code Logic（这个函数做什么）:
-        遍历所有角色目录，按"目录名精确匹配"或"角色名子串模糊匹配（去空白 + 小写）"返回
-        命中的 (char_id, char_name, library_db)；都不命中返回 None。
+        分层匹配，优先级从严到松，避免模糊子串带来的误命中/不确定命中：
+        1) 目录 ID 精确匹配（带不带 char_ 前缀都认）—— ID 唯一，命中即返回；
+        2) 角色名精确匹配（去空白 + 小写）—— 唯一命中返回，多命中抛 AmbiguousCharacter；
+        3) 角色名子串匹配（query 是名字子串，或名字是 query 子串）—— 唯一命中返回，
+           多命中抛 AmbiguousCharacter；
+        全部不命中返回 None。
     """
     import re as _re
 
-    voice_norm = voice_str.strip()
-    if voice_norm.startswith("char_"):
-        voice_norm = voice_norm.replace("char_", "")
+    def _norm(s: str) -> str:
+        return _re.sub(r"\s+", "", s).lower()
 
+    voice_raw = voice_str.strip()
+
+    # 一次性加载目录：(char_id 目录名, char_name, db)
+    catalog: list[tuple[str, str, dict[str, Any]]] = []
     for d in os.listdir(CHARACTERS_DIR):
         json_path = os.path.join(CHARACTERS_DIR, d, "library.json")
         if not os.path.exists(json_path):
@@ -314,10 +383,34 @@ def find_character_by_name_or_id(voice_str: str) -> Optional[tuple[str, str, dic
                 db = json.load(f)
         except Exception:
             continue
-        db_name = str(db.get("char_name", "")).strip()
-        clean_voice = _re.sub(r"\s+", "", voice_norm).lower()
-        clean_db = _re.sub(r"\s+", "", db_name).lower()
-        clean_d = d.replace("char_", "")
-        if clean_d == voice_norm or d == voice_norm or (clean_db and (clean_voice in clean_db or clean_db in clean_voice)):
-            return d, db_name, db
+        catalog.append((d, str(db.get("char_name", "")).strip(), db))
+
+    # Tier 1：目录 ID 精确匹配（ID 全局唯一，不存在歧义）
+    voice_id = voice_raw if voice_raw.startswith("char_") else f"char_{voice_raw}"
+    for d, name, db in catalog:
+        if voice_raw == d or voice_id == d:
+            return d, name, db
+
+    query = _norm(voice_raw)
+    if not query:
+        return None
+
+    # Tier 2：角色名精确匹配
+    exact = [(d, name, db) for d, name, db in catalog if name and _norm(name) == query]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise AmbiguousCharacter(voice_raw, [name for _, name, _ in exact])
+
+    # Tier 3：角色名子串匹配（双向），要求命中唯一
+    subs = [
+        (d, name, db)
+        for d, name, db in catalog
+        if name and (query in _norm(name) or _norm(name) in query)
+    ]
+    if len(subs) == 1:
+        return subs[0]
+    if len(subs) > 1:
+        raise AmbiguousCharacter(voice_raw, [name for _, name, _ in subs])
+
     return None

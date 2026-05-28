@@ -380,8 +380,10 @@ Then 后端：
   1. 校验文件名以 .zip 结尾，否则返回 HTTP 400 "请上传 ZIP 格式的角色包"
   2. 解压到临时目录；解压失败返回 HTTP 400 "ZIP 解析失败"
   3. 在临时目录中递归搜索 library.json 作为角色包根目录；找不到则返回 HTTP 400 "非标准角色包"
-  4. 生成新的 char_id，把内容复制到 characters/{new_char_id}/
-  5. 清理临时目录
+  4. 计算角色内容指纹（基于 items 的 filename+text，与 char_id 无关），与角色库中已有角色比对；
+     命中则返回 HTTP 409 "该角色已存在（与「<已有角色名>」内容完全相同），已跳过导入"，避免同一角色被导入成多份
+  5. 生成新的 char_id，把内容复制到 characters/{new_char_id}/，并把 library.json.char_id 刷成新目录名
+  6. 清理临时目录
 And 返回 {status: "success", char_id: "<new_char_id>"}
 ```
 
@@ -799,7 +801,7 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 ### 3.1 `characters/{char_id}/library.json`
 ```jsonc
 {
-  "char_id": "char_66ff5e94",          // 角色唯一 ID；目录名理论上应与之一致（实际项目中可能有历史差异）
+  "char_id": "char_0484abf3",          // 角色唯一 ID；必须与目录名一致（新建/导入均强制对齐，历史不一致数据已清理）
   "char_name": "芙宁娜",                // 显示名
   "items": [
     {
@@ -974,7 +976,7 @@ And 推理异常 → HTTP 500，详细错误经 stderr 打印
 
 ### 6.1 业务规则
 
-1. **`char_id` 唯一性**：新建/导入角色生成 `char_id = "char_" + hex(8)`，落盘到目录名。新代码保证目录名 == `library.json.char_id`（导入时会自动刷新内部字段）。所有寻址仍以目录名为准（实现位置：`domain.characters.find_character_by_name_or_id`），以兼容历史包内的不一致。
+1. **`char_id` 唯一性与角色去重**：新建/导入角色生成 `char_id = "char_" + hex(8)`，落盘到目录名。新代码保证目录名 == `library.json.char_id`（导入时会自动刷新内部字段；历史不一致数据已清理）。所有寻址以目录名为准（实现位置：`domain.characters.find_character_by_name_or_id`，分层匹配：目录 ID 精确 → 角色名精确 → 角色名唯一子串，名字命中多个时抛 `AmbiguousCharacter`，由 `/api/match`、`/v1/audio/speech` 翻译为 HTTP 409）。导入时还会用内容指纹（`domain.characters._character_fingerprint`，基于 items 的 filename+text）查重，命中已有角色则抛 `DuplicateCharacter`（HTTP 409）拒绝导入，防止同一角色被导入成多份导致对外 `/v1/voices` 出现重复条目。
 2. **items 主键稳定性**：`item.id` 在删除/合并/切分后可能形成空洞；前端必须按 id 寻址，不可按数组索引。
 3. **白名单优先级**：选择候选池时若存在 ≥1 个 `is_api_safe=true`，则只用这批；否则用全量已打标素材（实现：`domain.matcher._select_candidate_pool`）。
 4. **打标可用性**：素材若 `emotion` 为空白对象（即未打标），在匹配候选池里被排除；只要 `emotion` 是非空 dict 即视为有效。
